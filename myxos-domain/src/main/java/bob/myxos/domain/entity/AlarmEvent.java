@@ -1,0 +1,68 @@
+package bob.myxos.domain.entity;
+
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
+import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+/**
+ * 告警事件实体
+ */
+@Data
+@TableName("alarm_event")
+public class AlarmEvent {
+
+    /** 主键 ID */
+    @TableId(type = IdType.AUTO)
+    private Long id;
+
+    /** 触发规则 ID */
+    private Long ruleId;
+
+    /** 设备 ID */
+    private Long deviceId;
+
+    /** 指标类型 */
+    private String metricType;
+
+    /** 触发时的指标值 */
+    private String metricValue;
+
+    /** 触发时的阈值 */
+    private String thresholdValue;
+
+    /** 触发时间 */
+    private LocalDateTime firedAt;
+
+    /** 恢复时间 */
+    private LocalDateTime resolvedAt;
+
+    /** 状态：FIRING / RESOLVED */
+    private String status;
+
+    /** 创建人 */
+    @TableField(fill = FieldFill.INSERT)
+    private String whoCreated;
+
+    /** 创建时间 */
+    @TableField(fill = FieldFill.INSERT)
+    private LocalDateTime whenCreated;
+
+    /** 修改人 */
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private String whoModified;
+
+    /** 修改时间 */
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime whenModified;
+
+    /** 逻辑删除标记 */
+    @TableLogic
+    @TableField(fill = FieldFill.INSERT)
+    private Integer deleted;
+}

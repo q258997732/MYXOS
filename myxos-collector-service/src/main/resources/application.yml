@@ -1,0 +1,30 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: myxos-collector-service
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/myxos?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+myxos:
+  internal:
+    # 主服务与采集服务内部通信令牌，通过环境变量 MYXOS_INTERNAL_TOKEN 注入
+    token: ${MYXOS_INTERNAL_TOKEN:}
+  collector:
+    # 采集任务调度间隔（毫秒）
+    interval-ms: 30000
+    # 指标采集线程池配置
+    metric-pool-core: 8
+    metric-pool-max: 32
+    metric-pool-queue: 500
+    # 操作任务执行线程池配置
+    op-pool-core: 4
+    op-pool-max: 16
+    op-pool-queue: 200
