@@ -9,12 +9,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * 指标采集定时任务
@@ -33,7 +33,7 @@ public class MetricCollectJob {
 
     /** 指标采集线程池 */
     @Resource(name = "metricCollectExecutor")
-    private ThreadPoolExecutor metricCollectExecutor;
+    private ThreadPoolTaskExecutor metricCollectExecutor;
 
     /** 正在采集中的设备标记，防止重复提交 */
     private final ConcurrentHashMap<Long, Boolean> inFlight = new ConcurrentHashMap<>();
