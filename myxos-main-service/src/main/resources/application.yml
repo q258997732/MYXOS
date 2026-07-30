@@ -5,15 +5,15 @@ spring:
   application:
     name: myxos-main-service
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/myxos?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://${MYSQL_HOST:10.11.2.110}:3306/myxos?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: ${MYSQL_USER:root}
-    password: ${MYSQL_PASSWORD:root}
+    password: ${MYSQL_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
   flyway:
-    enabled: true
+    enabled: false
     locations: classpath:db/migration
     baseline-on-migrate: true
   jackson:
@@ -34,14 +34,14 @@ mybatis-plus:
 myxos:
   jwt:
     # JWT 签名密钥，必须通过环境变量 MYXOS_JWT_SECRET 注入，禁止硬编码
-    secret: ${MYXOS_JWT_SECRET:}
+    secret: ${MYXOS_JWT_SECRET:lb5m3LYWZrKgSKZQlNWADBeFHnqs4BOcX7u4jzHBdYflaYEwnBpFiuptHmNL5UL4}
     # 访问令牌有效期（毫秒），默认 2 小时
     expiration: 7200000
     # 刷新令牌有效期（毫秒），默认 7 天
     refresh-expiration: 604800000
   internal:
     # 主服务与采集服务内部通信共享令牌，必须通过环境变量注入
-    token: ${MYXOS_INTERNAL_TOKEN:}
+    token: ${MYXOS_INTERNAL_TOKEN:jn3MK+0q3YRkx56e8BgqFiITYKjJ36E9B4x/WDcdQ4K6aRAKw0swXgApMhuTckK0}
 
 logging:
   level:

@@ -8,6 +8,7 @@ import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.main.service.DeviceGroupService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,7 @@ import java.util.Set;
  * 设备分组业务实现
  */
 @Service
+@Primary
 @RequiredArgsConstructor
 public class DeviceGroupServiceImpl implements DeviceGroupService {
 
