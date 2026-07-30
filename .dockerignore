@@ -1,0 +1,29 @@
+# Maven
+target/
+*.jar
+*.war
+
+# Node.js / 前端
+node_modules/
+myxos-ui/node_modules/
+myxos-ui/node/
+myxos-ui/dist/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Git
+.git/
+.gitignore
+
+# 日志与临时文件
+*.log
+logs/
+*.tmp
+*.bak
+
+# 操作系统文件
+.DS_Store
+Thumbs.db

@@ -1,0 +1,55 @@
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: myxos-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+      MYSQL_DATABASE: myxos
+    volumes:
+      - myxos-mysql-data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  main-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.main-service
+    container_name: myxos-main-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+      MYXOS_JWT_SECRET: ${MYXOS_JWT_SECRET:?MYXOS_JWT_SECRET must be set}
+      MYXOS_INTERNAL_TOKEN: ${MYXOS_INTERNAL_TOKEN:?MYXOS_INTERNAL_TOKEN must be set}
+
+  collector-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.collector-service
+    container_name: myxos-collector-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+      main-service:
+        condition: service_started
+    ports:
+      - "8081:8081"
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+      MYXOS_INTERNAL_TOKEN: ${MYXOS_INTERNAL_TOKEN:?MYXOS_INTERNAL_TOKEN must be set}
+
+volumes:
+  myxos-mysql-data:

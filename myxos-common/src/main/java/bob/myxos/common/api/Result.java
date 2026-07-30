@@ -10,6 +10,9 @@ import lombok.Data;
 @Data
 public class Result<T> {
 
+    /** 成功状态码 */
+    public static final int SUCCESS_CODE = 200;
+
     /** 业务状态码：200 成功，其他为失败 */
     private Integer code;
 
@@ -28,7 +31,7 @@ public class Result<T> {
      */
     public static <T> Result<T> ok(T data) {
         Result<T> r = new Result<>();
-        r.setCode(200);
+        r.setCode(SUCCESS_CODE);
         r.setMsg("ok");
         r.setData(data);
         return r;
