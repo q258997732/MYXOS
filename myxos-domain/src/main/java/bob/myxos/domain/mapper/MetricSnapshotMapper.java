@@ -2,6 +2,7 @@ package bob.myxos.domain.mapper;
 
 import bob.myxos.domain.entity.MetricSnapshot;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -42,4 +43,13 @@ public interface MetricSnapshotMapper extends BaseMapper<MetricSnapshot> {
     List<MetricSnapshot> selectLatestByDeviceAndType(@Param("deviceId") Long deviceId,
                                                      @Param("metricType") String metricType,
                                                      @Param("limit") Integer limit);
+
+    /**
+     * 批量删除截止时间之前的指标快照
+     *
+     * @param deadline 截止时间
+     * @return 删除行数
+     */
+    @Delete("DELETE FROM metric_snapshot WHERE collected_at < #{deadline} AND deleted = 0 LIMIT 5000")
+    int deleteByCollectedAtBefore(@Param("deadline") LocalDateTime deadline);
 }
