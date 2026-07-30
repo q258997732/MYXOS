@@ -16,7 +16,7 @@ spring:
 myxos:
   internal:
     # 主服务与采集服务内部通信令牌，通过环境变量 MYXOS_INTERNAL_TOKEN 注入
-    token: ${MYXOS_INTERNAL_TOKEN:jn3MK+0q3YRkx56e8BgqFiITYKjJ36E9B4x/WDcdQ4K6aRAKw0swXgApMhuTckK0}
+    token: ${MYXOS_INTERNAL_TOKEN:}
   collector:
     # 采集任务调度间隔（毫秒）
     interval-ms: 30000
