@@ -95,5 +95,13 @@ public class RuleCache {
         private ThresholdRule rule;
         /** 该规则下的动作（按 sort 升序） */
         private List<ThresholdAction> actions;
+
+        public RuleWithActions() {
+        }
+
+        public RuleWithActions(ThresholdRule rule, List<ThresholdAction> actions) {
+            this.rule = rule;
+            this.actions = actions;
+        }
     }
 }
