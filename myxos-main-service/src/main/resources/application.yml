@@ -13,9 +13,10 @@ spring:
       maximum-pool-size: 20
       minimum-idle: 5
   flyway:
-    enabled: false
+    enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
+    clean-disabled: true
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
@@ -34,14 +35,14 @@ mybatis-plus:
 myxos:
   jwt:
     # JWT 签名密钥，必须通过环境变量 MYXOS_JWT_SECRET 注入，禁止硬编码
-    secret: ${MYXOS_JWT_SECRET:lb5m3LYWZrKgSKZQlNWADBeFHnqs4BOcX7u4jzHBdYflaYEwnBpFiuptHmNL5UL4}
+    secret: ${MYXOS_JWT_SECRET:}
     # 访问令牌有效期（毫秒），默认 2 小时
     expiration: 7200000
     # 刷新令牌有效期（毫秒），默认 7 天
     refresh-expiration: 604800000
   internal:
     # 主服务与采集服务内部通信共享令牌，必须通过环境变量注入
-    token: ${MYXOS_INTERNAL_TOKEN:jn3MK+0q3YRkx56e8BgqFiITYKjJ36E9B4x/WDcdQ4K6aRAKw0swXgApMhuTckK0}
+    token: ${MYXOS_INTERNAL_TOKEN:}
 
 logging:
   level:
