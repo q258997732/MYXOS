@@ -1,0 +1,39 @@
+package bob.myxos.main.service.impl;
+
+import bob.myxos.common.util.IpUtils;
+import bob.myxos.domain.entity.DiscoverTask;
+import bob.myxos.domain.mapper.DiscoverTaskMapper;
+import bob.myxos.main.dto.DiscoverReq;
+import bob.myxos.main.service.DiscoverService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+/**
+ * 设备发现服务实现
+ */
+@Service
+@RequiredArgsConstructor
+public class DiscoverServiceImpl implements DiscoverService {
+
+    private final DiscoverTaskMapper discoverTaskMapper;
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public DiscoverTask submit(DiscoverReq req) {
+        // 预先校验 CIDR 格式，避免写入非法任务
+        List<String> ips = IpUtils.expandCidr(req.getCidr());
+
+        DiscoverTask task = new DiscoverTask();
+        task.setCidr(req.getCidr());
+        task.setPortFrom(req.getPortFrom());
+        task.setPortTo(req.getPortTo());
+        task.setStatus("PENDING");
+        task.setFoundCount(0);
+        task.setMessage("待扫描 IP 数：" + ips.size());
+        discoverTaskMapper.insert(task);
+        return task;
+    }
+}
