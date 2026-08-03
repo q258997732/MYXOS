@@ -81,8 +81,89 @@ mvn clean package -DskipTests
 
 示例：`feat(auth): 实现 JWT 登录与登出功能`
 
+## MYTOS 监控/运维接口映射
+
+> 详细说明见 `docs/superpowers/plans/2026-08-03-mytos-api-mapping.md`。以下为首期确认接入的接口汇总。
+
+### 接口选择原则
+
+- 优先使用带版本前缀的接口：`/host_api/v1/`、`/dc_api/v1/`、`/and_api/v1/`。
+- `host_ip` / `ip` 对应监控系统中的 `device.ip`，`name` 对应安卓实例名称。
+
+### 用户明确功能
+
+| 功能 | 接口 | 方法 |
+|------|------|------|
+| 主机存活/健康检查 | `/host_api/v1/healthcheck/{host_ip}` | POST |
+| 重启主机 | `/host_api/v1/reboot_host/{host_ip}` | GET |
+| 获取安卓实例启动状态 | `/and_api/v1/get_android_boot_status/{ip}/{name}` | GET |
+| 获取所有安卓实例列表 | `/dc_api/v1/list/{ip}` | GET |
+| 获取指定安卓实例详情 | `/dc_api/v1/get_android_detail/{ip}/{name}` | GET |
+| 启动安卓实例 | `/dc_api/v1/run/{ip}/{name}` | GET |
+| 停止安卓实例 | `/dc_api/v1/stop/{ip}/{name}` | GET |
+| 重启安卓实例 | `/dc_api/v1/reboot/{ip}/{name}` | GET |
+
+### 日常监控（只读）
+
+| 功能 | 接口 | 方法 |
+|------|------|------|
+| 获取指定主机系统信息 | `/host_api/v1/get_systeminfo/{host_ip}` | GET |
+| 获取 3588 本机信息 | `/host_api/v1/systeminfo` | GET |
+| 获取主机硬件配置 | `/host_api/v1/get_hardware_cfg` | GET |
+| 获取主机版本 | `/dc_api/v1/get_host_ver/{ip}` | GET |
+| 获取网络对象明细 | `/dc_api/v1/get_network_detail/{ip}` | GET |
+| 获取局域网在线设备 | `/host_api/v1/query_myt` | GET |
+
+### 运维核心（容器生命周期）
+
+| 功能 | 接口 | 方法 | OperationCode |
+|------|------|------|--------------|
+| 运行安卓容器 | `/dc_api/v1/run/{ip}/{name}` | GET | `RUN_ANDROID` |
+| 停止安卓容器 | `/dc_api/v1/stop/{ip}/{name}` | GET | `STOP_ANDROID` |
+| 重启安卓容器 | `/dc_api/v1/reboot/{ip}/{name}` | GET | `REBOOT_ANDROID` |
+| 重置安卓容器 | `/dc_api/v1/reset/{ip}/{name}` | GET | `RESET_ANDROID` |
+| 重命名容器 | `/dc_api/v1/rename/{ip}/{old_name}/{new_name}` | GET | `RENAME_ANDROID` |
+
+### 手动操作面板
+
+| 功能 | 接口 | 方法 | OperationCode | 说明 |
+|------|------|------|--------------|------|
+| 设备截图（临时查看） | `/and_api/v1/screenshots/{ip}/{name}/{level}` | GET | `SCREENSHOT` | 仅临时展示，不保存、不进 `op_task` |
+| 执行 Adb 命令 | `/and_api/v1/shell/{ip}/{name}` | POST | `SHELL_ADB` | 请求体为 shell 命令 |
+| 设置剪贴板 | `/and_api/v1/clipboard_set/{ip}/{name}` | GET | `SET_CLIPBOARD` | `text` 查询参数 |
+| 获取剪贴板 | `/and_api/v1/clipboard_get/{ip}/{name}` | GET | `GET_CLIPBOARD` | 查询类 |
+| 设置系统语言 | `/and_api/v1/set_Language/{ip}/{name}/{country}/{lanuage}` | GET | `SET_LANGUAGE` | `country`、`lanuage` 路径参数 |
+| IP 智能定位 | `/and_api/v1/set_ipLocation/{ip}/{name}/{lanuage}` | GET | `REFRESH_LOCATION` | 对应原 `REFRESH_LOC` |
+
+### OperationCode 枚举（首期）
+
+```java
+public enum OperationCode {
+    REBOOT_HOST,
+    RUN_ANDROID,
+    STOP_ANDROID,
+    REBOOT_ANDROID,
+    RESET_ANDROID,
+    RENAME_ANDROID,
+    SET_CLIPBOARD,
+    GET_CLIPBOARD,
+    SET_LANGUAGE,
+    REFRESH_LOCATION,
+    SCREENSHOT,
+    SHELL_ADB
+}
+```
+
+### 自动发现流程
+
+1. 用户提交 CIDR + 端口范围（`discover_task`）。
+2. 采集服务对每个 `ip:port` 调用 `POST /host_api/v1/healthcheck/{host_ip}` 探测主机存活。
+3. 存活主机再调用 `GET /host_api/v1/get_systeminfo/{host_ip}` 与 `GET /dc_api/v1/get_host_ver/{ip}` 补充信息。
+4. 写入 `device` 表（`source=DISCOVERED`）。
+5. 后续定时采集周期性调用 `/dc_api/v1/list/{ip}` 刷新安卓实例清单。
+
 ## 参考文档
 
 - `docs/superpowers/plans/2026-07-29-mytos-monitor.md`：完整实施计划
 - `docs/superpowers/plans/2026-07-29-system-design.md`：系统详细设计（页面、API、流程、状态机）
-- `MYTOS API 接口文档.md`：设备端 HTTP API 参考
+- `docs/superpowers/plans/2026-08-03-mytos-api-mapping.md`：MYTOS 监控/运维接口映射

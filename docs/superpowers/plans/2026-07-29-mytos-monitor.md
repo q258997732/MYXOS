@@ -338,9 +338,18 @@ public enum OpTaskStatus {
 package bob.myxos.common.enums;
 
 public enum OperationCode {
-    REBOOT, ADB_ON, ADB_OFF, KEEPALIVE_ON, KEEPALIVE_OFF,
-    SET_CLIPBOARD, CLEAR_PROXY, SET_PROXY, UPLOAD_FILE,
-    REFRESH_LOC, SET_FINGERPRINT, SET_LANGUAGE, SET_PROXY_FILTER
+    REBOOT_HOST,
+    RUN_ANDROID,
+    STOP_ANDROID,
+    REBOOT_ANDROID,
+    RESET_ANDROID,
+    RENAME_ANDROID,
+    SET_CLIPBOARD,
+    GET_CLIPBOARD,
+    SET_LANGUAGE,
+    REFRESH_LOCATION,
+    SCREENSHOT,
+    SHELL_ADB
 }
 ```
 
@@ -900,8 +909,20 @@ git commit -m "feat(db): add Flyway migration scripts for all tables and seed da
 - 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/MytosException.java`
 - 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/config/MytosClientConfig.java`
 - 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/MytosBaseResp.java`
-- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/InfoResp.java`
-- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/VersionResp.java`
+- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/HealthResp.java`
+- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/HostSystemInfoResp.java`
+- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/HardwareCfgResp.java`
+- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/HostVerResp.java`
+- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/NetworkDetailResp.java`
+- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/MytDeviceListResp.java`
+- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/AndroidListResp.java`
+- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/AndroidDetailResp.java`
+- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/BootStatusResp.java`
+- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/ScreenshotResp.java`
+- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/ShellResp.java`
+- 创建：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/ClipboardResp.java`
+- 删除：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/InfoResp.java`（旧版无对应接口）
+- 删除：`myxos-mytos-client/src/main/java/bob/myxos/mytos/dto/VersionResp.java`（旧版无对应接口）
 
 - [ ] **步骤 1：创建模块 POM**
 
@@ -995,15 +1016,14 @@ import lombok.EqualsAndHashCode;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-public class InfoResp extends MytosBaseResp {
-    private InfoData data;
+public class HealthResp extends MytosBaseResp {
+    private HealthData data;
 
     @Data
-    public static class InfoData {
+    public static class HealthData {
+        private Boolean dockerApi;
+        private Boolean pingStatus;
         private String hostIp;
-        private String instance;
-        private String name;
-        private String buildTime;
     }
 }
 ```
@@ -1016,25 +1036,25 @@ import lombok.EqualsAndHashCode;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-public class VersionResp extends MytosBaseResp {
+public class HostVerResp extends MytosBaseResp {
     private String msg;
 }
 ```
 
-- [ ] **步骤 4：创建 MytosClient 基础方法**
+- [ ] **步骤 4：创建 MytosClient 方法**
+
+> 接口清单以 `docs/superpowers/plans/2026-08-03-mytos-api-mapping.md` 最终确认范围为准。以下为 `MytosClient` 需实现的方法骨架，具体 DTO 按返回结构补充。
 
 ```java
 package bob.myxos.mytos;
 
-import bob.myxos.mytos.dto.InfoResp;
-import bob.myxos.mytos.dto.VersionResp;
+import bob.myxos.mytos.dto.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
+import okhttp3.*;
 
 import java.io.IOException;
+import java.util.Map;
 
 @RequiredArgsConstructor
 public class MytosClient {
@@ -1042,29 +1062,153 @@ public class MytosClient {
     private final ObjectMapper objectMapper;
     private final String baseUrl;
 
-    public InfoResp info() throws IOException {
-        Request request = new Request.Builder()
-                .url(baseUrl + "/info")
-                .get()
-                .build();
-        try (Response response = httpClient.newCall(request).execute()) {
-            String body = response.body() != null ? response.body().string() : "{}";
-            return objectMapper.readValue(body, InfoResp.class);
-        }
+    // ========== 主机层面 ==========
+
+    public HealthResp healthcheck(String hostIp) throws IOException {
+        return post("/host_api/v1/healthcheck/" + hostIp, HealthResp.class);
     }
 
-    public VersionResp queryVersion() throws IOException {
+    public HostSystemInfoResp getSystemInfo(String hostIp) throws IOException {
+        return get("/host_api/v1/get_systeminfo/" + hostIp, HostSystemInfoResp.class);
+    }
+
+    public HostSystemInfoResp systeminfo() throws IOException {
+        return get("/host_api/v1/systeminfo", HostSystemInfoResp.class);
+    }
+
+    public HardwareCfgResp getHardwareCfg() throws IOException {
+        return get("/host_api/v1/get_hardware_cfg", HardwareCfgResp.class);
+    }
+
+    public HostVerResp getHostVer(String ip) throws IOException {
+        return get("/dc_api/v1/get_host_ver/" + ip, HostVerResp.class);
+    }
+
+    public NetworkDetailResp getNetworkDetail(String ip) throws IOException {
+        return get("/dc_api/v1/get_network_detail/" + ip, NetworkDetailResp.class);
+    }
+
+    public MytDeviceListResp queryMyt() throws IOException {
+        return get("/host_api/v1/query_myt", MytDeviceListResp.class);
+    }
+
+    public MytosBaseResp rebootHost(String hostIp) throws IOException {
+        return get("/host_api/v1/reboot_host/" + hostIp, MytosBaseResp.class);
+    }
+
+    // ========== 容器实例生命周期 ==========
+
+    public AndroidListResp listAndroid(String ip) throws IOException {
+        return get("/dc_api/v1/list/" + ip, AndroidListResp.class);
+    }
+
+    public AndroidDetailResp getAndroidDetail(String ip, String name) throws IOException {
+        return get("/dc_api/v1/get_android_detail/" + ip + "/" + name, AndroidDetailResp.class);
+    }
+
+    public BootStatusResp getAndroidBootStatus(String ip, String name) throws IOException {
+        return get("/and_api/v1/get_android_boot_status/" + ip + "/" + name, BootStatusResp.class);
+    }
+
+    public MytosBaseResp runAndroid(String ip, String name) throws IOException {
+        return get("/dc_api/v1/run/" + ip + "/" + name, MytosBaseResp.class);
+    }
+
+    public MytosBaseResp stopAndroid(String ip, String name) throws IOException {
+        return get("/dc_api/v1/stop/" + ip + "/" + name, MytosBaseResp.class);
+    }
+
+    public MytosBaseResp rebootAndroid(String ip, String name) throws IOException {
+        return get("/dc_api/v1/reboot/" + ip + "/" + name, MytosBaseResp.class);
+    }
+
+    public MytosBaseResp resetAndroid(String ip, String name) throws IOException {
+        return get("/dc_api/v1/reset/" + ip + "/" + name, MytosBaseResp.class);
+    }
+
+    public MytosBaseResp renameAndroid(String ip, String oldName, String newName) throws IOException {
+        return get("/dc_api/v1/rename/" + ip + "/" + oldName + "/" + newName, MytosBaseResp.class);
+    }
+
+    // ========== 手动操作面板 ==========
+
+    public ScreenshotResp screenshot(String ip, String name, String level) throws IOException {
+        return get("/and_api/v1/screenshots/" + ip + "/" + name + "/" + level, ScreenshotResp.class);
+    }
+
+    public ShellResp shell(String ip, String name, String command) throws IOException {
+        return postBody("/and_api/v1/shell/" + ip + "/" + name, command, ShellResp.class);
+    }
+
+    public MytosBaseResp clipboardSet(String ip, String name, String text) throws IOException {
+        return get("/and_api/v1/clipboard_set/" + ip + "/" + name + "?text=" + text, MytosBaseResp.class);
+    }
+
+    public ClipboardResp clipboardGet(String ip, String name) throws IOException {
+        return get("/and_api/v1/clipboard_get/" + ip + "/" + name, ClipboardResp.class);
+    }
+
+    public MytosBaseResp setLanguage(String ip, String name, String country, String language) throws IOException {
+        return get("/and_api/v1/set_Language/" + ip + "/" + name + "/" + country + "/" + language, MytosBaseResp.class);
+    }
+
+    public MytosBaseResp setIpLocation(String ip, String name, String language) throws IOException {
+        return get("/and_api/v1/set_ipLocation/" + ip + "/" + name + "/" + language, MytosBaseResp.class);
+    }
+
+    // ========== 基础 HTTP 工具方法 ==========
+
+    private String url(String path) {
+        return baseUrl + path;
+    }
+
+    private <T> T get(String path, Class<T> clazz) throws IOException {
+        Request request = new Request.Builder().url(url(path)).get().build();
+        return execute(request, clazz);
+    }
+
+    private <T> T post(String path, Class<T> clazz) throws IOException {
         Request request = new Request.Builder()
-                .url(baseUrl + "/queryversion")
-                .get()
+                .url(url(path))
+                .post(RequestBody.create("", MediaType.parse("application/json")))
                 .build();
+        return execute(request, clazz);
+    }
+
+    private <T> T postBody(String path, String body, Class<T> clazz) throws IOException {
+        Request request = new Request.Builder()
+                .url(url(path))
+                .post(RequestBody.create(body, MediaType.parse("application/json")))
+                .build();
+        return execute(request, clazz);
+    }
+
+    private <T> T execute(Request request, Class<T> clazz) throws IOException {
         try (Response response = httpClient.newCall(request).execute()) {
             String body = response.body() != null ? response.body().string() : "{}";
-            return objectMapper.readValue(body, VersionResp.class);
+            return objectMapper.readValue(body, clazz);
         }
     }
 }
 ```
+
+**需同步创建的 DTO（在 `bob.myxos.mytos.dto` 包下）**：
+
+- `MytosBaseResp`：通用返回（已有）
+- `HealthResp`：健康检查返回 `docker_api`、`ping_status`、`host_ip`
+- `HostSystemInfoResp`：主机 CPU/内存/磁盘等系统信息
+- `HardwareCfgResp`：主机硬件配置
+- `HostVerResp`：主机版本
+- `NetworkDetailResp`：网络对象明细
+- `MytDeviceListResp`：局域网在线 3588 设备列表
+- `AndroidListResp`：安卓容器列表
+- `AndroidDetailResp`：安卓实例详细信息
+- `BootStatusResp`：安卓启动状态
+- `ScreenshotResp`：截图返回（Base64 或图片流）
+- `ShellResp`：adb shell 执行结果
+- `ClipboardResp`：剪贴板内容
+
+**注意**：旧的 `info()` 与 `queryVersion()` 方法在 `mytos_real_openapi.json` 中无直接对应路径，可移除或保留为兼容方法；自动发现统一使用 `healthcheck()`。
 
 - [ ] **步骤 5：创建 MytosClientFactory**
 
@@ -1101,7 +1245,7 @@ mvn -pl myxos-mytos-client clean install -DskipTests
 
 ```bash
 git add myxos-mytos-client/
-git commit -m "feat(mytos-client): add OkHttp-based MYTOS device client skeleton"
+git commit -m "feat(mytos-client): add MYTOS device client for host/container monitoring and operations"
 ```
 
 ---
@@ -2132,8 +2276,8 @@ import bob.myxos.domain.entity.MetricSnapshot;
 import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
-import bob.myxos.mytos.dto.InfoResp;
-import bob.myxos.mytos.dto.VersionResp;
+import bob.myxos.mytos.dto.HealthResp;
+import bob.myxos.mytos.dto.HostVerResp;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -2161,14 +2305,15 @@ public class MetricCollector implements Runnable {
         DeviceStatus status = DeviceStatus.OFFLINE;
         String version = null;
         try {
-            InfoResp info = client.info();
-            VersionResp versionResp = client.queryVersion();
-            if (info.getCode() != null && info.getCode() == 200) {
+            HealthResp health = client.healthcheck(device.getIp());
+            if (health.getCode() != null && health.getCode() == 200) {
                 status = DeviceStatus.ONLINE;
+                HostVerResp verResp = client.getHostVer(device.getIp());
+                version = verResp.getMsg();
                 MetricSnapshot s = new MetricSnapshot();
                 s.setDeviceId(device.getId());
                 s.setMetricType(MetricType.VERSION.name());
-                s.setMetricValue(versionResp.getMsg());
+                s.setMetricValue(version);
                 s.setCollectedAt(LocalDateTime.now());
                 snapshots.add(s);
             }
@@ -2548,9 +2693,14 @@ public class OpTaskExecuteJob {
 package bob.myxos.collector.execute;
 
 import bob.myxos.common.enums.OpTaskStatus;
+import bob.myxos.common.exception.BizException;
+import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.OpTask;
+import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.domain.mapper.OpTaskMapper;
+import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -2562,13 +2712,19 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class OpTaskRunnerFactory {
     private final OpTaskMapper opTaskMapper;
+    private final DeviceMapper deviceMapper;
     private final MytosClientFactory clientFactory;
 
     public Runnable create(OpTask task) {
         return () -> {
+            Device device = deviceMapper.selectById(task.getDeviceId());
+            if (device == null) {
+                fail(task, "设备不存在");
+                return;
+            }
+            MytosClient client = clientFactory.create(device.getIp(), device.getPort());
             try {
-                // 根据 operation_code 调用对应 MytosClient 方法
-                log.info("执行任务 {} - {}", task.getId(), task.getOperationCode());
+                executeByCode(client, device, task);
                 task.setStatus(OpTaskStatus.SUCCESS.name());
                 task.setResultMsg("执行成功");
             } catch (Exception e) {
@@ -2587,8 +2743,86 @@ public class OpTaskRunnerFactory {
             }
         };
     }
+
+    private void executeByCode(MytosClient client, Device device, OpTask task) throws Exception {
+        String code = task.getOperationCode();
+        String ip = device.getIp();
+        String name = extractName(task.getParams());
+        switch (code) {
+            case "REBOOT_HOST":
+                client.rebootHost(ip);
+                break;
+            case "RUN_ANDROID":
+                client.runAndroid(ip, name);
+                break;
+            case "STOP_ANDROID":
+                client.stopAndroid(ip, name);
+                break;
+            case "REBOOT_ANDROID":
+                client.rebootAndroid(ip, name);
+                break;
+            case "RESET_ANDROID":
+                client.resetAndroid(ip, name);
+                break;
+            case "RENAME_ANDROID":
+                String newName = extractNewName(task.getParams());
+                client.renameAndroid(ip, name, newName);
+                break;
+            case "SET_CLIPBOARD":
+                client.clipboardSet(ip, name, extractText(task.getParams()));
+                break;
+            case "GET_CLIPBOARD":
+                client.clipboardGet(ip, name);
+                break;
+            case "SET_LANGUAGE":
+                client.setLanguage(ip, name, extractCountry(task.getParams()), extractLanguage(task.getParams()));
+                break;
+            case "REFRESH_LOCATION":
+                client.setIpLocation(ip, name, extractLanguage(task.getParams()));
+                break;
+            case "SHELL_ADB":
+                client.shell(ip, name, extractCommand(task.getParams()));
+                break;
+            default:
+                throw new BizException("不支持的操作类型：" + code);
+        }
+    }
+
+    private String extractName(String params) {
+        // 从 JSON 参数中提取 name 字段
+        return params;
+    }
+
+    private String extractNewName(String params) {
+        return params;
+    }
+
+    private String extractText(String params) {
+        return params;
+    }
+
+    private String extractCountry(String params) {
+        return params;
+    }
+
+    private String extractLanguage(String params) {
+        return params;
+    }
+
+    private String extractCommand(String params) {
+        return params;
+    }
+
+    private void fail(OpTask task, String msg) {
+        task.setStatus(OpTaskStatus.FAILED.name());
+        task.setResultMsg(msg);
+        task.setFinishedAt(LocalDateTime.now());
+        opTaskMapper.updateById(task);
+    }
 }
 ```
+
+> 说明：`SCREENSHOT` 为即时查询类操作，不进入 `op_task` 异步队列，由前端直接调用 `MytosClient.screenshot()` 临时展示。
 
 - [ ] **步骤 4：在 Mapper 中新增 claimPending 方法**
 
@@ -2954,7 +3188,7 @@ import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.domain.mapper.DiscoverTaskMapper;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
-import bob.myxos.mytos.dto.InfoResp;
+import bob.myxos.mytos.dto.HealthResp;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -2997,7 +3231,7 @@ public class DeviceDiscoveryScanner {
                 executor.execute(() -> {
                     try {
                         MytosClient client = clientFactory.create(ip, p);
-                        InfoResp resp = client.info();
+                        HealthResp resp = client.healthcheck(ip);
                         if (resp.getCode() != null && resp.getCode() == 200) {
                             saveDiscoveredDevice(ip, p, resp);
                             found.incrementAndGet();
@@ -3022,7 +3256,7 @@ public class DeviceDiscoveryScanner {
         discoverTaskMapper.updateById(task);
     }
 
-    private void saveDiscoveredDevice(String ip, int port, InfoResp resp) {
+    private void saveDiscoveredDevice(String ip, int port, HealthResp resp) {
         Long count = deviceMapper.selectCount(
                 new LambdaQueryWrapper<Device>()
                         .eq(Device::getIp, ip)
@@ -3030,7 +3264,9 @@ public class DeviceDiscoveryScanner {
                         .eq(Device::getDeleted, 0));
         if (count > 0) return;
         Device device = new Device();
-        device.setName(resp.getData().getName() != null ? resp.getData().getName() : ip + ":" + port);
+        device.setName(resp.getData() != null && resp.getData().getHostIp() != null
+                ? resp.getData().getHostIp()
+                : ip + ":" + port);
         device.setIp(ip);
         device.setPort(port);
         device.setMode(DeviceMode.BRIDGE.name());
