@@ -63,7 +63,7 @@ class OpTaskRunnerFactoryTest {
         OpTask task = new OpTask();
         task.setId(1L);
         task.setDeviceId(1L);
-        task.setOperationCode("REBOOT");
+        task.setOperationCode(OperationCode.REBOOT_HOST.name());
         task.setParams(null);
         task.setRetryCount(0);
         task.setMaxRetry(3);
@@ -76,7 +76,7 @@ class OpTaskRunnerFactoryTest {
         factory.create(task).run();
 
         // Assert
-        verify(client, times(1)).execute(OperationCode.REBOOT, null);
+        verify(client, times(1)).execute(OperationCode.REBOOT_HOST, null);
         assertEquals("SUCCESS", task.getStatus());
         verify(opTaskMapper, times(1)).updateById(task);
     }
@@ -88,7 +88,7 @@ class OpTaskRunnerFactoryTest {
         OpTask task = new OpTask();
         task.setId(1L);
         task.setDeviceId(1L);
-        task.setOperationCode("REBOOT");
+        task.setOperationCode(OperationCode.REBOOT_HOST.name());
         task.setRetryCount(0);
         task.setMaxRetry(3);
 
@@ -115,7 +115,7 @@ class OpTaskRunnerFactoryTest {
         OpTask task = new OpTask();
         task.setId(1L);
         task.setDeviceId(1L);
-        task.setOperationCode("REBOOT");
+        task.setOperationCode(OperationCode.REBOOT_HOST.name());
         task.setParams(null);
         task.setRetryCount(0);
         task.setMaxRetry(3);
@@ -147,7 +147,7 @@ class OpTaskRunnerFactoryTest {
         OpTask task = new OpTask();
         task.setId(1L);
         task.setDeviceId(1L);
-        task.setOperationCode("REBOOT");
+        task.setOperationCode(OperationCode.REBOOT_HOST.name());
         task.setParams(null);
         task.setRetryCount(3);
         task.setMaxRetry(3);

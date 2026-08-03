@@ -1,6 +1,7 @@
 package bob.myxos.main.service;
 
 import bob.myxos.common.enums.DeviceStatus;
+import bob.myxos.common.enums.OperationCode;
 import bob.myxos.common.exception.BizException;
 import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.DeviceGroup;
@@ -9,11 +10,13 @@ import bob.myxos.domain.mapper.DeviceGroupMapper;
 import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.domain.mapper.OpTaskMapper;
 import bob.myxos.main.dto.DeviceCreateReq;
+import bob.myxos.mytos.MytosClientFactory;
 import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceUpdateReq;
 import bob.myxos.main.service.impl.DeviceServiceImpl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -56,11 +59,17 @@ class DeviceServiceTest {
     @Mock
     private OpTaskMapper opTaskMapper;
 
+    @Mock
+    private MytosClientFactory mytosClientFactory;
+
+    @Mock
+    private ObjectMapper objectMapper;
+
     private DeviceServiceImpl deviceService;
 
     @BeforeEach
     void setUp() {
-        deviceService = new DeviceServiceImpl(deviceMapper, deviceGroupMapper, opTaskMapper);
+        deviceService = new DeviceServiceImpl(deviceMapper, deviceGroupMapper, opTaskMapper, mytosClientFactory, objectMapper);
     }
 
     /** 构造合法的创建请求 */
@@ -293,18 +302,47 @@ class DeviceServiceTest {
         });
 
         // Act
-        Long taskId = deviceService.submitOpTask(1L, "REBOOT", "{}");
+        Long taskId = deviceService.submitOpTask(1L, OperationCode.REBOOT_HOST.name(), null);
 
         // Assert
         assertEquals(555L, taskId);
         ArgumentCaptor<OpTask> captor = ArgumentCaptor.forClass(OpTask.class);
         verify(opTaskMapper).insert(captor.capture());
         OpTask task = captor.getValue();
-        assertEquals("REBOOT", task.getOperationCode());
-        assertEquals("{}", task.getParams());
+        assertEquals(OperationCode.REBOOT_HOST.name(), task.getOperationCode());
+        assertEquals(null, task.getParams());
         assertEquals("MANUAL", task.getSource());
         assertEquals("PENDING", task.getStatus());
         assertEquals(0, task.getRetryCount());
+    }
+
+    @Test
+    @DisplayName("下发手动操作：携带参数时序列化为 JSON 字符串")
+    void submitOpTaskWithParams() throws Exception {
+        // Arrange
+        Device existing = new Device();
+        existing.setId(1L);
+        existing.setDeleted(0);
+        when(deviceMapper.selectById(1L)).thenReturn(existing);
+        when(opTaskMapper.insert(any(OpTask.class))).thenAnswer(inv -> {
+            OpTask t = inv.getArgument(0);
+            t.setId(555L);
+            return 1;
+        });
+        when(objectMapper.writeValueAsString(any())).thenReturn("{\"name\":\"instance_01\"}");
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("name", "instance_01");
+
+        // Act
+        Long taskId = deviceService.submitOpTask(1L, OperationCode.SET_CLIPBOARD.name(), params);
+
+        // Assert
+        assertEquals(555L, taskId);
+        ArgumentCaptor<OpTask> captor = ArgumentCaptor.forClass(OpTask.class);
+        verify(opTaskMapper).insert(captor.capture());
+        OpTask task = captor.getValue();
+        assertEquals("{\"name\":\"instance_01\"}", task.getParams());
     }
 
     @Test
@@ -314,7 +352,7 @@ class DeviceServiceTest {
         when(deviceMapper.selectById(99L)).thenReturn(null);
 
         // Act & Assert
-        assertThrows(BizException.class, () -> deviceService.submitOpTask(99L, "REBOOT", null));
+        assertThrows(BizException.class, () -> deviceService.submitOpTask(99L, OperationCode.REBOOT_HOST.name(), (Map<String, Object>) null));
         verify(opTaskMapper, never()).insert(any(OpTask.class));
     }
 }

@@ -1,15 +1,9 @@
 package bob.myxos.mytos;
 
 import bob.myxos.common.enums.OperationCode;
-import bob.myxos.mytos.dto.InfoResp;
-import bob.myxos.mytos.dto.MytosBaseResp;
-import bob.myxos.mytos.dto.VersionResp;
+import bob.myxos.mytos.dto.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import okhttp3.HttpUrl;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
+import okhttp3.*;
 
 import java.io.IOException;
 import java.util.Map;
@@ -21,6 +15,8 @@ import java.util.Objects;
  * <p>
  * 非 Spring Bean，由 {@link MytosClientFactory} 创建。
  * 每个实例绑定一台设备（IP + 端口）。
+ * <p>
+ * 接口范围以 docs/superpowers/plans/2026-08-03-mytos-api-mapping.md 最终确认的首期接口为准。
  */
 public class MytosClient {
 
@@ -50,163 +46,312 @@ public class MytosClient {
         this.baseUrl = baseUrl;
     }
 
-    // ==================== 基础信息接口 ====================
+    // ==================== 主机层面接口 ====================
 
     /**
-     * 获取设备信息
-     * GET /info
+     * 主机存活/健康检查
+     * POST /host_api/v1/healthcheck/{hostIp}
      *
-     * @return 设备信息响应
+     * @param hostIp 主机 IP
+     * @return 健康检查响应
      */
-    public InfoResp info() {
-        return doGet("/info", null, InfoResp.class);
+    public HealthResp healthcheck(String hostIp) {
+        requireNonBlank(hostIp, "hostIp 不能为空");
+        return doPost("/host_api/v1/healthcheck/" + hostIp, HealthResp.class);
     }
 
     /**
-     * 查询设备版本
-     * GET /queryversion
+     * 获取指定主机系统信息
+     * GET /host_api/v1/get_systeminfo/{hostIp}
      *
-     * @return 版本响应（版本号在 msg 字段）
+     * @param hostIp 主机 IP
+     * @return 系统信息响应
      */
-    public VersionResp queryVersion() {
-        return doGet("/queryversion", null, VersionResp.class);
+    public HostSystemInfoResp getSystemInfo(String hostIp) {
+        requireNonBlank(hostIp, "hostIp 不能为空");
+        return doGet("/host_api/v1/get_systeminfo/" + hostIp, HostSystemInfoResp.class);
     }
 
-    // ==================== 已实现操作 ====================
+    /**
+     * 获取 3588 本机系统信息
+     * GET /host_api/v1/systeminfo
+     *
+     * @return 系统信息响应
+     */
+    public HostSystemInfoResp systeminfo() {
+        return doGet("/host_api/v1/systeminfo", HostSystemInfoResp.class);
+    }
 
     /**
-     * 重启设备
-     * GET /reboot
+     * 获取主机硬件配置
+     * GET /host_api/v1/get_hardware_cfg
      *
+     * @return 硬件配置响应
+     */
+    public HardwareCfgResp getHardwareCfg() {
+        return doGet("/host_api/v1/get_hardware_cfg", HardwareCfgResp.class);
+    }
+
+    /**
+     * 获取主机版本
+     * GET /dc_api/v1/get_host_ver/{ip}
+     *
+     * @param ip 主机 IP
+     * @return 版本响应
+     */
+    public HostVerResp getHostVer(String ip) {
+        requireNonBlank(ip, "ip 不能为空");
+        return doGet("/dc_api/v1/get_host_ver/" + ip, HostVerResp.class);
+    }
+
+    /**
+     * 获取网络对象明细
+     * GET /dc_api/v1/get_network_detail/{ip}
+     *
+     * @param ip 主机 IP
+     * @return 网络明细响应
+     */
+    public NetworkDetailResp getNetworkDetail(String ip) {
+        requireNonBlank(ip, "ip 不能为空");
+        return doGet("/dc_api/v1/get_network_detail/" + ip, NetworkDetailResp.class);
+    }
+
+    /**
+     * 获取局域网在线 MYTOS 设备列表
+     * GET /host_api/v1/query_myt
+     *
+     * @return 在线设备列表响应
+     */
+    public MytDeviceListResp queryMyt() {
+        return doGet("/host_api/v1/query_myt", MytDeviceListResp.class);
+    }
+
+    /**
+     * 重启主机
+     * GET /host_api/v1/reboot_host/{hostIp}
+     *
+     * @param hostIp 主机 IP
      * @return 基础响应
      */
-    public MytosBaseResp reboot() {
-        return doGet("/reboot", null, MytosBaseResp.class);
+    public MytosBaseResp rebootHost(String hostIp) {
+        requireNonBlank(hostIp, "hostIp 不能为空");
+        return doGet("/host_api/v1/reboot_host/" + hostIp, MytosBaseResp.class);
+    }
+
+    // ==================== 容器实例生命周期接口 ====================
+
+    /**
+     * 获取安卓容器列表（明细）
+     * GET /dc_api/v1/list/{ip}
+     *
+     * @param ip 主机 IP
+     * @return 容器列表响应
+     */
+    public AndroidListResp listAndroid(String ip) {
+        requireNonBlank(ip, "ip 不能为空");
+        return doGet("/dc_api/v1/list/" + ip, AndroidListResp.class);
     }
 
     /**
-     * 打开 ADB root 权限
-     * GET /adb?cmd=2
+     * 获取指定安卓实例详情
+     * GET /dc_api/v1/get_android_detail/{ip}/{name}
      *
-     * @return 基础响应
+     * @param ip   主机 IP
+     * @param name 容器名称
+     * @return 实例详情响应
      */
-    public MytosBaseResp adbOn() {
-        HttpUrl url = newUrlBuilder("/adb")
-                .addQueryParameter("cmd", "2")
-                .build();
-        return doGet("/adb", url, MytosBaseResp.class);
+    public AndroidDetailResp getAndroidDetail(String ip, String name) {
+        requireNonBlank(ip, "ip 不能为空");
+        requireSafePathSegment(name, "name 不能为空");
+        return doGet("/dc_api/v1/get_android_detail/" + ip + "/" + name, AndroidDetailResp.class);
     }
 
     /**
-     * 关闭 ADB root 权限
-     * GET /adb?cmd=3
+     * 获取安卓实例启动状态
+     * GET /and_api/v1/get_android_boot_status/{ip}/{name}
      *
-     * @return 基础响应
+     * @param ip   主机 IP
+     * @param name 容器名称
+     * @return 启动状态响应
      */
-    public MytosBaseResp adbOff() {
-        HttpUrl url = newUrlBuilder("/adb")
-                .addQueryParameter("cmd", "3")
-                .build();
-        return doGet("/adb", url, MytosBaseResp.class);
+    public BootStatusResp getAndroidBootStatus(String ip, String name) {
+        requireNonBlank(ip, "ip 不能为空");
+        requireSafePathSegment(name, "name 不能为空");
+        return doGet("/and_api/v1/get_android_boot_status/" + ip + "/" + name, BootStatusResp.class);
     }
 
     /**
-     * 打开指定应用的后台保活
-     * GET /background?cmd=2&package=xxx
+     * 运行安卓容器
+     * GET /dc_api/v1/run/{ip}/{name}
      *
-     * @param packageName 应用包名
+     * @param ip   主机 IP
+     * @param name 容器名称
      * @return 基础响应
      */
-    public MytosBaseResp keepaliveOn(String packageName) {
-        requireNonBlank(packageName, "packageName 不能为空");
-        HttpUrl url = newUrlBuilder("/background")
-                .addQueryParameter("cmd", "2")
-                .addQueryParameter("package", packageName)
-                .build();
-        return doGet("/background", url, MytosBaseResp.class);
+    public MytosBaseResp runAndroid(String ip, String name) {
+        requireNonBlank(ip, "ip 不能为空");
+        requireSafePathSegment(name, "name 不能为空");
+        return doGet("/dc_api/v1/run/" + ip + "/" + name, MytosBaseResp.class);
     }
 
     /**
-     * 关闭指定应用的后台保活
-     * GET /background?cmd=3&package=xxx
+     * 停止安卓容器
+     * GET /dc_api/v1/stop/{ip}/{name}
      *
-     * @param packageName 应用包名
+     * @param ip   主机 IP
+     * @param name 容器名称
      * @return 基础响应
      */
-    public MytosBaseResp keepaliveOff(String packageName) {
-        requireNonBlank(packageName, "packageName 不能为空");
-        HttpUrl url = newUrlBuilder("/background")
-                .addQueryParameter("cmd", "3")
-                .addQueryParameter("package", packageName)
-                .build();
-        return doGet("/background", url, MytosBaseResp.class);
+    public MytosBaseResp stopAndroid(String ip, String name) {
+        requireNonBlank(ip, "ip 不能为空");
+        requireSafePathSegment(name, "name 不能为空");
+        return doGet("/dc_api/v1/stop/" + ip + "/" + name, MytosBaseResp.class);
     }
 
     /**
-     * 设置设备剪贴板内容
-     * GET /clipboard?cmd=2&text=xxx
+     * 重启安卓容器
+     * GET /dc_api/v1/reboot/{ip}/{name}
      *
-     * @param text 要设置的文本内容
+     * @param ip   主机 IP
+     * @param name 容器名称
      * @return 基础响应
      */
-    public MytosBaseResp setClipboard(String text) {
+    public MytosBaseResp rebootAndroid(String ip, String name) {
+        requireNonBlank(ip, "ip 不能为空");
+        requireSafePathSegment(name, "name 不能为空");
+        return doGet("/dc_api/v1/reboot/" + ip + "/" + name, MytosBaseResp.class);
+    }
+
+    /**
+     * 重置安卓容器
+     * GET /dc_api/v1/reset/{ip}/{name}
+     *
+     * @param ip   主机 IP
+     * @param name 容器名称
+     * @return 基础响应
+     */
+    public MytosBaseResp resetAndroid(String ip, String name) {
+        requireNonBlank(ip, "ip 不能为空");
+        requireSafePathSegment(name, "name 不能为空");
+        return doGet("/dc_api/v1/reset/" + ip + "/" + name, MytosBaseResp.class);
+    }
+
+    /**
+     * 重命名安卓容器
+     * GET /dc_api/v1/rename/{ip}/{oldName}/{newName}
+     *
+     * @param ip      主机 IP
+     * @param oldName 原容器名称
+     * @param newName 新容器名称
+     * @return 基础响应
+     */
+    public MytosBaseResp renameAndroid(String ip, String oldName, String newName) {
+        requireNonBlank(ip, "ip 不能为空");
+        requireSafePathSegment(oldName, "oldName 不能为空");
+        requireSafePathSegment(newName, "newName 不能为空");
+        return doGet("/dc_api/v1/rename/" + ip + "/" + oldName + "/" + newName, MytosBaseResp.class);
+    }
+
+    // ==================== 手动操作面板接口 ====================
+
+    /**
+     * 设备截图（临时查看）
+     * GET /and_api/v1/screenshots/{ip}/{name}/{level}
+     *
+     * @param ip    主机 IP
+     * @param name  容器名称
+     * @param level 截图等级
+     * @return 截图响应
+     */
+    public ScreenshotResp screenshot(String ip, String name, String level) {
+        requireNonBlank(ip, "ip 不能为空");
+        requireSafePathSegment(name, "name 不能为空");
+        requireSafePathSegment(level, "level 不能为空");
+        return doGet("/and_api/v1/screenshots/" + ip + "/" + name + "/" + level, ScreenshotResp.class);
+    }
+
+    /**
+     * 执行 Adb 命令
+     * POST /and_api/v1/shell/{ip}/{name}
+     *
+     * @param ip      主机 IP
+     * @param name    容器名称
+     * @param command shell 命令
+     * @return shell 执行结果响应
+     */
+    public ShellResp shell(String ip, String name, String command) {
+        requireNonBlank(ip, "ip 不能为空");
+        requireSafePathSegment(name, "name 不能为空");
+        requireNonBlank(command, "command 不能为空");
+        return doPostBody("/and_api/v1/shell/" + ip + "/" + name, command,
+                MediaType.parse("text/plain; charset=utf-8"), ShellResp.class);
+    }
+
+    /**
+     * 设置剪贴板内容
+     * GET /and_api/v1/clipboard_set/{ip}/{name}?text=xxx
+     *
+     * @param ip   主机 IP
+     * @param name 容器名称
+     * @param text 文本内容
+     * @return 基础响应
+     */
+    public MytosBaseResp clipboardSet(String ip, String name, String text) {
+        requireNonBlank(ip, "ip 不能为空");
+        requireSafePathSegment(name, "name 不能为空");
         requireNonBlank(text, "text 不能为空");
-        HttpUrl url = newUrlBuilder("/clipboard")
-                .addQueryParameter("cmd", "2")
+        HttpUrl url = newUrlBuilder("/and_api/v1/clipboard_set/" + ip + "/" + name)
                 .addQueryParameter("text", text)
                 .build();
-        return doGet("/clipboard", url, MytosBaseResp.class);
-    }
-
-    // ==================== 待实现操作（按 OperationCode 预留） ====================
-
-    /**
-     * 清除代理（待实现）
-     */
-    public MytosBaseResp clearProxy() {
-        throw new MytosException("操作 CLEAR_PROXY 暂未实现");
+        return doGet(url, MytosBaseResp.class);
     }
 
     /**
-     * 设置代理（待实现）
+     * 获取剪贴板内容
+     * GET /and_api/v1/clipboard_get/{ip}/{name}
+     *
+     * @param ip   主机 IP
+     * @param name 容器名称
+     * @return 剪贴板响应
      */
-    public MytosBaseResp setProxy() {
-        throw new MytosException("操作 SET_PROXY 暂未实现");
+    public ClipboardResp clipboardGet(String ip, String name) {
+        requireNonBlank(ip, "ip 不能为空");
+        requireSafePathSegment(name, "name 不能为空");
+        return doGet("/and_api/v1/clipboard_get/" + ip + "/" + name, ClipboardResp.class);
     }
 
     /**
-     * 上传文件（待实现）
+     * 设置系统语言
+     * GET /and_api/v1/set_Language/{ip}/{name}/{country}/{language}
+     *
+     * @param ip       主机 IP
+     * @param name     容器名称
+     * @param country  国家代码
+     * @param language 语言代码
+     * @return 基础响应
      */
-    public MytosBaseResp uploadFile() {
-        throw new MytosException("操作 UPLOAD_FILE 暂未实现");
+    public MytosBaseResp setLanguage(String ip, String name, String country, String language) {
+        requireNonBlank(ip, "ip 不能为空");
+        requireSafePathSegment(name, "name 不能为空");
+        requireSafePathSegment(country, "country 不能为空");
+        requireSafePathSegment(language, "language 不能为空");
+        return doGet("/and_api/v1/set_Language/" + ip + "/" + name + "/" + country + "/" + language, MytosBaseResp.class);
     }
 
     /**
-     * 刷新定位（待实现）
+     * IP 智能定位
+     * GET /and_api/v1/set_ipLocation/{ip}/{name}/{language}
+     *
+     * @param ip       主机 IP
+     * @param name     容器名称
+     * @param language 语言代码
+     * @return 基础响应
      */
-    public MytosBaseResp refreshLoc() {
-        throw new MytosException("操作 REFRESH_LOC 暂未实现");
-    }
-
-    /**
-     * 设置指纹（待实现）
-     */
-    public MytosBaseResp setFingerprint() {
-        throw new MytosException("操作 SET_FINGERPRINT 暂未实现");
-    }
-
-    /**
-     * 设置语言（待实现）
-     */
-    public MytosBaseResp setLanguage() {
-        throw new MytosException("操作 SET_LANGUAGE 暂未实现");
-    }
-
-    /**
-     * 设置代理过滤（待实现）
-     */
-    public MytosBaseResp setProxyFilter() {
-        throw new MytosException("操作 SET_PROXY_FILTER 暂未实现");
+    public MytosBaseResp setIpLocation(String ip, String name, String language) {
+        requireNonBlank(ip, "ip 不能为空");
+        requireSafePathSegment(name, "name 不能为空");
+        requireSafePathSegment(language, "language 不能为空");
+        return doGet("/and_api/v1/set_ipLocation/" + ip + "/" + name + "/" + language, MytosBaseResp.class);
     }
 
     // ==================== 统一执行入口 ====================
@@ -223,55 +368,89 @@ public class MytosClient {
         if (code == null) {
             throw new IllegalArgumentException("操作码不能为空");
         }
+        String ip = getDeviceIp();
         switch (code) {
-            case REBOOT:
-                return reboot();
-            case ADB_ON:
-                return adbOn();
-            case ADB_OFF:
-                return adbOff();
-            case KEEPALIVE_ON:
-                return keepaliveOn(getStringParam(params, "packageName"));
-            case KEEPALIVE_OFF:
-                return keepaliveOff(getStringParam(params, "packageName"));
+            case REBOOT_HOST:
+                return rebootHost(ip);
+            case RUN_ANDROID:
+                return runAndroid(ip, getStringParam(params, "name"));
+            case STOP_ANDROID:
+                return stopAndroid(ip, getStringParam(params, "name"));
+            case REBOOT_ANDROID:
+                return rebootAndroid(ip, getStringParam(params, "name"));
+            case RESET_ANDROID:
+                return resetAndroid(ip, getStringParam(params, "name"));
+            case RENAME_ANDROID:
+                return renameAndroid(ip, getStringParam(params, "name"), getStringParam(params, "newName"));
             case SET_CLIPBOARD:
-                return setClipboard(getStringParam(params, "text"));
-            case CLEAR_PROXY:
-                return clearProxy();
-            case SET_PROXY:
-                return setProxy();
-            case UPLOAD_FILE:
-                return uploadFile();
-            case REFRESH_LOC:
-                return refreshLoc();
-            case SET_FINGERPRINT:
-                return setFingerprint();
+                return clipboardSet(ip, getStringParam(params, "name"), getStringParam(params, "text"));
+            case GET_CLIPBOARD:
+                return clipboardGet(ip, getStringParam(params, "name"));
             case SET_LANGUAGE:
-                return setLanguage();
-            case SET_PROXY_FILTER:
-                return setProxyFilter();
+                return setLanguage(ip, getStringParam(params, "name"),
+                        getStringParam(params, "country"), getStringParam(params, "language"));
+            case REFRESH_LOCATION:
+                return setIpLocation(ip, getStringParam(params, "name"), getStringParam(params, "language"));
+            case SCREENSHOT:
+                return screenshot(ip, getStringParam(params, "name"), getStringParam(params, "level"));
+            case SHELL_ADB:
+                return shell(ip, getStringParam(params, "name"), getStringParam(params, "command"));
             default:
                 throw new MytosException("未知操作码: " + code);
         }
     }
 
-    // ==================== 私有辅助方法 ====================
-
     /**
-     * 执行 GET 请求并解析响应
-     *
-     * @param path      请求路径（当 url 为 null 时使用）
-     * @param url       完整请求 URL（含查询参数），可为 null
-     * @param respClass 响应类型
-     * @param <T>       响应泛型
-     * @return 解析后的响应对象
+     * 获取当前客户端绑定的设备 IP
      */
-    private <T extends MytosBaseResp> T doGet(String path, HttpUrl url, Class<T> respClass) {
-        HttpUrl target = url != null ? url : HttpUrl.parse(baseUrl + path);
-        if (target == null) {
+    private String getDeviceIp() {
+        HttpUrl parsed = HttpUrl.parse(baseUrl);
+        if (parsed == null) {
+            throw new IllegalStateException("无法解析 baseUrl: " + baseUrl);
+        }
+        return parsed.host();
+    }
+
+    // ==================== 私有 HTTP 辅助方法 ====================
+
+    private <T extends MytosBaseResp> T doGet(String path, Class<T> respClass) {
+        HttpUrl url = HttpUrl.parse(baseUrl + path);
+        if (url == null) {
             throw new MytosException("非法的请求地址: " + baseUrl + path);
         }
-        Request request = new Request.Builder().url(target).get().build();
+        return doGet(url, respClass);
+    }
+
+    private <T extends MytosBaseResp> T doGet(HttpUrl url, Class<T> respClass) {
+        Request request = new Request.Builder().url(url).get().build();
+        return execute(request, respClass);
+    }
+
+    private <T extends MytosBaseResp> T doPost(String path, Class<T> respClass) {
+        HttpUrl url = HttpUrl.parse(baseUrl + path);
+        if (url == null) {
+            throw new MytosException("非法的请求地址: " + baseUrl + path);
+        }
+        Request request = new Request.Builder()
+                .url(url)
+                .post(RequestBody.create("", MediaType.parse("application/json; charset=utf-8")))
+                .build();
+        return execute(request, respClass);
+    }
+
+    private <T extends MytosBaseResp> T doPostBody(String path, String body, MediaType mediaType, Class<T> respClass) {
+        HttpUrl url = HttpUrl.parse(baseUrl + path);
+        if (url == null) {
+            throw new MytosException("非法的请求地址: " + baseUrl + path);
+        }
+        Request request = new Request.Builder()
+                .url(url)
+                .post(RequestBody.create(body, mediaType))
+                .build();
+        return execute(request, respClass);
+    }
+
+    private <T extends MytosBaseResp> T execute(Request request, Class<T> respClass) {
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new MytosException(response.code(),
@@ -287,11 +466,6 @@ public class MytosClient {
         }
     }
 
-    /**
-     * 校验设备返回的业务状态码
-     *
-     * @param resp 响应对象
-     */
     private void checkDeviceCode(MytosBaseResp resp) {
         if (resp == null || resp.getCode() == null) {
             throw new MytosException("设备响应为空或缺少状态码");
@@ -303,9 +477,14 @@ public class MytosClient {
         }
     }
 
-    /**
-     * 从参数 Map 中获取非空字符串参数
-     */
+    private HttpUrl.Builder newUrlBuilder(String path) {
+        HttpUrl parsed = HttpUrl.parse(baseUrl + path);
+        if (parsed == null) {
+            throw new MytosException("非法的请求地址: " + baseUrl + path);
+        }
+        return parsed.newBuilder();
+    }
+
     private String getStringParam(Map<String, Object> params, String key) {
         if (params == null) {
             throw new IllegalArgumentException("参数不能为空，缺少: " + key);
@@ -317,27 +496,19 @@ public class MytosClient {
         return value.toString();
     }
 
-    /**
-     * 构建指定路径的 URL 生成器
-     *
-     * @param path 请求路径
-     * @return HttpUrl.Builder
-     * @throws MytosException 当 baseUrl + path 无法解析时抛出
-     */
-    private HttpUrl.Builder newUrlBuilder(String path) {
-        HttpUrl parsed = HttpUrl.parse(baseUrl + path);
-        if (parsed == null) {
-            throw new MytosException("非法的请求地址: " + baseUrl + path);
-        }
-        return parsed.newBuilder();
-    }
-
-    /**
-     * 校验字符串非空
-     */
     private void requireNonBlank(String value, String message) {
         if (value == null || value.trim().isEmpty()) {
             throw new IllegalArgumentException(message);
+        }
+    }
+
+    /**
+     * 校验路径片段：非空且仅包含安全字符，防止路径注入或构造异常 URL
+     */
+    private void requireSafePathSegment(String value, String message) {
+        requireNonBlank(value, message);
+        if (!value.matches("^[A-Za-z0-9_.-]{1,64}$")) {
+            throw new IllegalArgumentException(message + " 包含非法字符");
         }
     }
 }

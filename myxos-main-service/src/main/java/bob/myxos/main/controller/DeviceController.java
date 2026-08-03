@@ -11,6 +11,7 @@ import bob.myxos.main.service.DeviceService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,6 +23,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.validation.Valid;
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.Pattern;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -30,6 +33,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/devices")
+@Validated
 @RequiredArgsConstructor
 public class DeviceController {
 
@@ -137,6 +141,27 @@ public class DeviceController {
         Long taskId = deviceService.submitOpTask(id, req.getOperationCode(), req.getParams());
         Map<String, Object> data = new HashMap<>(2);
         data.put("taskId", taskId);
+        return Result.ok(data);
+    }
+
+    /**
+     * 设备截图（临时查看，不保存）
+     *
+     * @param id    设备 ID
+     * @param name  安卓容器名称
+     * @param level 截图等级
+     * @return 图片数据（Base64 或 URL）
+     */
+    @GetMapping("/{id}/screenshot")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public Result<String> screenshot(@PathVariable Long id,
+                                       @RequestParam @NotBlank(message = "容器名称不能为空")
+                                       @Pattern(regexp = "^[A-Za-z0-9_.-]{1,64}$", message = "容器名称包含非法字符")
+                                       String name,
+                                       @RequestParam(defaultValue = "1")
+                                       @Pattern(regexp = "^[0-9]{1,4}$", message = "截图等级格式错误")
+                                       String level) {
+        String data = deviceService.screenshot(id, name, level);
         return Result.ok(data);
     }
 }

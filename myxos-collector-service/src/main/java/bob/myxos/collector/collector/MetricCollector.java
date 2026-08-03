@@ -7,8 +7,8 @@ import bob.myxos.domain.entity.MetricSnapshot;
 import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
-import bob.myxos.mytos.dto.InfoResp;
-import bob.myxos.mytos.dto.VersionResp;
+import bob.myxos.mytos.dto.HealthResp;
+import bob.myxos.mytos.dto.HostVerResp;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -59,16 +59,16 @@ public class MetricCollector implements Runnable {
         DeviceStatus status = DeviceStatus.OFFLINE;
         String version = null;
         try {
-            InfoResp info = client.info();
-            VersionResp versionResp = client.queryVersion();
-            if (info.getCode() != null && info.getCode() == 200) {
+            HealthResp health = client.healthcheck(device.getIp());
+            if (health.getCode() != null && health.getCode() == 200) {
                 status = DeviceStatus.ONLINE;
-                version = versionResp.getMsg();
+                HostVerResp verResp = client.getHostVer(device.getIp());
+                version = verResp.getMsg();
                 MetricSnapshot snapshot = new MetricSnapshot();
                 snapshot.setDeviceId(device.getId());
                 snapshot.setMetricType(MetricType.VERSION.name());
-                snapshot.setMetricValue(versionResp.getMsg());
-                snapshot.setMetricNum(parseVersionNumber(versionResp.getMsg()));
+                snapshot.setMetricValue(version);
+                snapshot.setMetricNum(parseVersionNumber(version));
                 snapshot.setCollectedAt(LocalDateTime.now());
                 snapshots.add(snapshot);
             }

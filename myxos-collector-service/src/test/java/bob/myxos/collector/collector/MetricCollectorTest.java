@@ -7,8 +7,8 @@ import bob.myxos.domain.entity.MetricSnapshot;
 import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
-import bob.myxos.mytos.dto.InfoResp;
-import bob.myxos.mytos.dto.VersionResp;
+import bob.myxos.mytos.dto.HealthResp;
+import bob.myxos.mytos.dto.HostVerResp;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -57,14 +57,14 @@ class MetricCollectorTest {
     @DisplayName("设备在线时应保存版本指标并更新状态为 ONLINE")
     void runWhenDeviceOnline() {
         // Arrange
-        InfoResp info = new InfoResp();
-        info.setCode(200);
-        VersionResp version = new VersionResp();
+        HealthResp health = new HealthResp();
+        health.setCode(200);
+        HostVerResp version = new HostVerResp();
         version.setMsg("1.2.3");
 
         when(clientFactory.create(anyString(), anyInt())).thenReturn(client);
-        when(client.info()).thenReturn(info);
-        when(client.queryVersion()).thenReturn(version);
+        when(client.healthcheck(anyString())).thenReturn(health);
+        when(client.getHostVer(anyString())).thenReturn(version);
 
         MetricCollector collector = new MetricCollector(device, clientFactory, persistCallback, deviceMapper);
 
@@ -90,11 +90,11 @@ class MetricCollectorTest {
     @DisplayName("设备响应非 200 时应更新状态为 OFFLINE 且不保存指标")
     void runWhenDeviceResponseError() {
         // Arrange
-        InfoResp info = new InfoResp();
-        info.setCode(500);
+        HealthResp health = new HealthResp();
+        health.setCode(500);
 
         when(clientFactory.create(anyString(), anyInt())).thenReturn(client);
-        when(client.info()).thenReturn(info);
+        when(client.healthcheck(anyString())).thenReturn(health);
 
         MetricCollector collector = new MetricCollector(device, clientFactory, persistCallback, deviceMapper);
 
@@ -113,7 +113,7 @@ class MetricCollectorTest {
     void runWhenExceptionThrown() {
         // Arrange
         when(clientFactory.create(anyString(), anyInt())).thenReturn(client);
-        when(client.info()).thenThrow(new RuntimeException("connection timeout"));
+        when(client.healthcheck(anyString())).thenThrow(new RuntimeException("connection timeout"));
 
         MetricCollector collector = new MetricCollector(device, clientFactory, persistCallback, deviceMapper);
 

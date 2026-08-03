@@ -1,8 +1,10 @@
 package bob.myxos.mytos;
 
-import bob.myxos.mytos.dto.InfoResp;
+import bob.myxos.common.enums.OperationCode;
+import bob.myxos.mytos.dto.HealthResp;
+import bob.myxos.mytos.dto.HostVerResp;
 import bob.myxos.mytos.dto.MytosBaseResp;
-import bob.myxos.mytos.dto.VersionResp;
+import bob.myxos.mytos.dto.ScreenshotResp;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
@@ -14,6 +16,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,7 +46,6 @@ class MytosClientTest {
                 .build();
         objectMapper = new ObjectMapper();
         String baseUrl = mockWebServer.url("/").toString();
-        // 去掉末尾的斜杠，便于拼接路径
         if (baseUrl.endsWith("/")) {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
@@ -54,266 +57,245 @@ class MytosClientTest {
         mockWebServer.shutdown();
     }
 
-    // ==================== info() 测试 ====================
+    // ==================== 健康检查测试 ====================
 
     @Test
-    @DisplayName("info() 成功时应正确解析设备信息")
-    void info_should_parse_device_info_when_success() throws Exception {
-        // 准备：模拟设备返回成功响应
+    @DisplayName("healthcheck() 成功时应正确解析健康状态")
+    void healthcheck_should_parse_health_status_when_success() throws Exception {
         String responseBody = "{\"code\":200,\"msg\":\"ok\",\"data\":{" +
-                "\"hostIp\":\"192.168.30.1\"," +
-                "\"instance\":\"8\"," +
-                "\"name\":\"p738c384c1581ad24c3fcf199684f5f5_8\"," +
-                "\"buildTime\":\"1766829184\"}}";
+                "\"dockerApi\":true,\"pingStatus\":true,\"hostIp\":\"192.168.30.2\"}}";
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
                 .setBody(responseBody));
 
-        // 执行
-        InfoResp resp = mytosClient.info();
+        HealthResp resp = mytosClient.healthcheck("192.168.30.2");
 
-        // 断言
         assertThat(resp).isNotNull();
         assertThat(resp.getCode()).isEqualTo(200);
-        assertThat(resp.getMsg()).isEqualTo("ok");
         assertThat(resp.getData()).isNotNull();
-        assertThat(resp.getData().getHostIp()).isEqualTo("192.168.30.1");
-        assertThat(resp.getData().getInstance()).isEqualTo("8");
-        assertThat(resp.getData().getName()).isEqualTo("p738c384c1581ad24c3fcf199684f5f5_8");
-        assertThat(resp.getData().getBuildTime()).isEqualTo("1766829184");
+        assertThat(resp.getData().getDockerApi()).isTrue();
+        assertThat(resp.getData().getPingStatus()).isTrue();
+        assertThat(resp.getData().getHostIp()).isEqualTo("192.168.30.2");
 
-        // 验证请求路径
         RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
         assertThat(request).isNotNull();
-        assertThat(request.getPath()).isEqualTo("/info");
-        assertThat(request.getMethod()).isEqualTo("GET");
+        assertThat(request.getPath()).isEqualTo("/host_api/v1/healthcheck/192.168.30.2");
+        assertThat(request.getMethod()).isEqualTo("POST");
     }
 
     @Test
-    @DisplayName("info() 设备返回失败码时应抛出 MytosException")
-    void info_should_throw_exception_when_device_returns_error_code() {
-        // 准备：模拟设备返回失败响应
-        String responseBody = "{\"code\":202,\"reason\":\"设备内部错误\"}";
+    @DisplayName("healthcheck() 设备返回失败码时应抛出 MytosException")
+    void healthcheck_should_throw_exception_when_device_returns_error_code() {
+        String responseBody = "{\"code\":500,\"reason\":\"设备内部错误\"}";
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
                 .setBody(responseBody));
 
-        // 执行 + 断言
-        assertThatThrownBy(() -> mytosClient.info())
+        assertThatThrownBy(() -> mytosClient.healthcheck("192.168.30.2"))
                 .isInstanceOf(MytosException.class)
                 .hasMessageContaining("设备内部错误");
     }
 
-    @Test
-    @DisplayName("info() HTTP 状态码非 2xx 时应抛出 MytosException")
-    void info_should_throw_exception_when_http_status_not_2xx() {
-        // 准备：模拟设备返回 500 错误
-        mockWebServer.enqueue(new MockResponse()
-                .setResponseCode(500)
-                .setBody("Internal Server Error"));
-
-        // 执行 + 断言
-        assertThatThrownBy(() -> mytosClient.info())
-                .isInstanceOf(MytosException.class)
-                .hasMessageContaining("500");
-    }
+    // ==================== 主机版本测试 ====================
 
     @Test
-    @DisplayName("info() 网络超时时应抛出 MytosException")
-    void info_should_throw_exception_when_network_timeout() {
-        // 准备：不 enqueue 任何响应，让请求超时
-        // 使用一个短超时的 client
-        OkHttpClient shortTimeoutClient = new OkHttpClient.Builder()
-                .connectTimeout(100, TimeUnit.MILLISECONDS)
-                .readTimeout(100, TimeUnit.MILLISECONDS)
-                .build();
-        String baseUrl = mockWebServer.url("/").toString();
-        if (baseUrl.endsWith("/")) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-        }
-        MytosClient timeoutClient = new MytosClient(shortTimeoutClient, objectMapper, baseUrl);
-
-        // 执行 + 断言
-        assertThatThrownBy(timeoutClient::info)
-                .isInstanceOf(MytosException.class);
-    }
-
-    // ==================== queryVersion() 测试 ====================
-
-    @Test
-    @DisplayName("queryVersion() 成功时应正确解析版本号")
-    void queryVersion_should_parse_version_when_success() throws Exception {
-        // 准备
+    @DisplayName("getHostVer() 成功时应正确解析版本号")
+    void getHostVer_should_parse_version_when_success() throws Exception {
         String responseBody = "{\"code\":200,\"msg\":\"3\"}";
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
                 .setBody(responseBody));
 
-        // 执行
-        VersionResp resp = mytosClient.queryVersion();
+        HostVerResp resp = mytosClient.getHostVer("192.168.30.2");
 
-        // 断言
         assertThat(resp).isNotNull();
         assertThat(resp.getCode()).isEqualTo(200);
         assertThat(resp.getMsg()).isEqualTo("3");
 
-        // 验证请求路径
         RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
-        assertThat(request).isNotNull();
-        assertThat(request.getPath()).isEqualTo("/queryversion");
+        assertThat(request.getPath()).isEqualTo("/dc_api/v1/get_host_ver/192.168.30.2");
         assertThat(request.getMethod()).isEqualTo("GET");
     }
 
-    @Test
-    @DisplayName("queryVersion() 设备返回失败码时应抛出 MytosException")
-    void queryVersion_should_throw_exception_when_device_returns_error_code() {
-        // 准备
-        String responseBody = "{\"code\":202,\"reason\":\"查询失败\"}";
-        mockWebServer.enqueue(new MockResponse()
-                .setResponseCode(200)
-                .setHeader("Content-Type", "application/json")
-                .setBody(responseBody));
-
-        // 执行 + 断言
-        assertThatThrownBy(() -> mytosClient.queryVersion())
-                .isInstanceOf(MytosException.class)
-                .hasMessageContaining("查询失败");
-    }
-
-    // ==================== reboot() 测试 ====================
+    // ==================== 容器生命周期测试 ====================
 
     @Test
-    @DisplayName("reboot() 成功时应返回 ok 响应")
-    void reboot_should_return_ok_when_success() throws Exception {
-        // 准备
-        String responseBody = "{\"code\":200,\"msg\":\"ok\"}";
-        mockWebServer.enqueue(new MockResponse()
-                .setResponseCode(200)
-                .setHeader("Content-Type", "application/json")
-                .setBody(responseBody));
-
-        // 执行
-        MytosBaseResp resp = mytosClient.reboot();
-
-        // 断言
-        assertThat(resp).isNotNull();
-        assertThat(resp.getCode()).isEqualTo(200);
-
-        // 验证请求路径
-        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
-        assertThat(request).isNotNull();
-        assertThat(request.getPath()).isEqualTo("/reboot");
-        assertThat(request.getMethod()).isEqualTo("GET");
-    }
-
-    // ==================== adbOn() / adbOff() 测试 ====================
-
-    @Test
-    @DisplayName("adbOn() 应调用 /adb?cmd=2")
-    void adbOn_should_call_adb_cmd2() throws Exception {
-        // 准备
-        mockWebServer.enqueue(new MockResponse()
-                .setResponseCode(200)
-                .setHeader("Content-Type", "application/json")
-                .setBody("{\"code\":200,\"msg\":\"open adb root success\"}"));
-
-        // 执行
-        MytosBaseResp resp = mytosClient.adbOn();
-
-        // 断言
-        assertThat(resp.getCode()).isEqualTo(200);
-        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
-        assertThat(request.getPath()).isEqualTo("/adb?cmd=2");
-    }
-
-    @Test
-    @DisplayName("adbOff() 应调用 /adb?cmd=3")
-    void adbOff_should_call_adb_cmd3() throws Exception {
-        // 准备
-        mockWebServer.enqueue(new MockResponse()
-                .setResponseCode(200)
-                .setHeader("Content-Type", "application/json")
-                .setBody("{\"code\":200,\"msg\":\"close adb root success\"}"));
-
-        // 执行
-        MytosBaseResp resp = mytosClient.adbOff();
-
-        // 断言
-        assertThat(resp.getCode()).isEqualTo(200);
-        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
-        assertThat(request.getPath()).isEqualTo("/adb?cmd=3");
-    }
-
-    // ==================== keepaliveOn() / keepaliveOff() 测试 ====================
-
-    @Test
-    @DisplayName("keepaliveOn() 应调用 /background?cmd=2&package=xxx")
-    void keepaliveOn_should_call_background_cmd2() throws Exception {
-        // 准备
-        mockWebServer.enqueue(new MockResponse()
-                .setResponseCode(200)
-                .setHeader("Content-Type", "application/json")
-                .setBody("{\"code\":200,\"msg\":\"添加成功\"}"));
-
-        // 执行
-        MytosBaseResp resp = mytosClient.keepaliveOn("com.ss.android.ugc.aweme");
-
-        // 断言
-        assertThat(resp.getCode()).isEqualTo(200);
-        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
-        assertThat(request.getPath()).isEqualTo("/background?cmd=2&package=com.ss.android.ugc.aweme");
-    }
-
-    @Test
-    @DisplayName("keepaliveOff() 应调用 /background?cmd=3&package=xxx")
-    void keepaliveOff_should_call_background_cmd3() throws Exception {
-        // 准备
-        mockWebServer.enqueue(new MockResponse()
-                .setResponseCode(200)
-                .setHeader("Content-Type", "application/json")
-                .setBody("{\"code\":200,\"msg\":\"移除成功\"}"));
-
-        // 执行
-        MytosBaseResp resp = mytosClient.keepaliveOff("com.ss.android.ugc.aweme");
-
-        // 断言
-        assertThat(resp.getCode()).isEqualTo(200);
-        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
-        assertThat(request.getPath()).isEqualTo("/background?cmd=3&package=com.ss.android.ugc.aweme");
-    }
-
-    // ==================== setClipboard() 测试 ====================
-
-    @Test
-    @DisplayName("setClipboard() 应调用 /clipboard?cmd=2&text=xxx 并进行 URL 编码")
-    void setClipboard_should_call_clipboard_cmd2_with_url_encoding() throws Exception {
-        // 准备
+    @DisplayName("rebootAndroid() 应调用 /dc_api/v1/reboot/{ip}/{name}")
+    void rebootAndroid_should_call_correct_path() throws Exception {
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
                 .setBody("{\"code\":200,\"msg\":\"ok\"}"));
 
-        // 执行
-        MytosBaseResp resp = mytosClient.setClipboard("hello world");
+        MytosBaseResp resp = mytosClient.rebootAndroid("192.168.30.2", "instance_01");
 
-        // 断言
         assertThat(resp.getCode()).isEqualTo(200);
         RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
-        // 空格应被 URL 编码为 %20 或 +
-        assertThat(request.getPath()).startsWith("/clipboard?cmd=2&text=");
-        assertThat(request.getPath()).contains("hello");
+        assertThat(request.getPath()).isEqualTo("/dc_api/v1/reboot/192.168.30.2/instance_01");
+        assertThat(request.getMethod()).isEqualTo("GET");
     }
 
-    // ==================== 未实现操作测试 ====================
+    @Test
+    @DisplayName("stopAndroid() 应调用 /dc_api/v1/stop/{ip}/{name}")
+    void stopAndroid_should_call_correct_path() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"code\":200,\"msg\":\"ok\"}"));
+
+        MytosBaseResp resp = mytosClient.stopAndroid("192.168.30.2", "instance_01");
+
+        assertThat(resp.getCode()).isEqualTo(200);
+        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
+        assertThat(request.getPath()).isEqualTo("/dc_api/v1/stop/192.168.30.2/instance_01");
+    }
 
     @Test
-    @DisplayName("未实现的操作应抛出 MytosException")
-    void unsupported_operation_should_throw_exception() {
-        assertThatThrownBy(() -> mytosClient.clearProxy())
-                .isInstanceOf(MytosException.class)
-                .hasMessageContaining("CLEAR_PROXY");
+    @DisplayName("runAndroid() 应调用 /dc_api/v1/run/{ip}/{name}")
+    void runAndroid_should_call_correct_path() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"code\":200,\"msg\":\"ok\"}"));
+
+        MytosBaseResp resp = mytosClient.runAndroid("192.168.30.2", "instance_01");
+
+        assertThat(resp.getCode()).isEqualTo(200);
+        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
+        assertThat(request.getPath()).isEqualTo("/dc_api/v1/run/192.168.30.2/instance_01");
+    }
+
+    @Test
+    @DisplayName("resetAndroid() 应调用 /dc_api/v1/reset/{ip}/{name}")
+    void resetAndroid_should_call_correct_path() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"code\":200,\"msg\":\"ok\"}"));
+
+        MytosBaseResp resp = mytosClient.resetAndroid("192.168.30.2", "instance_01");
+
+        assertThat(resp.getCode()).isEqualTo(200);
+        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
+        assertThat(request.getPath()).isEqualTo("/dc_api/v1/reset/192.168.30.2/instance_01");
+    }
+
+    @Test
+    @DisplayName("renameAndroid() 应调用 /dc_api/v1/rename/{ip}/{oldName}/{newName}")
+    void renameAndroid_should_call_correct_path() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"code\":200,\"msg\":\"ok\"}"));
+
+        MytosBaseResp resp = mytosClient.renameAndroid("192.168.30.2", "old_name", "new_name");
+
+        assertThat(resp.getCode()).isEqualTo(200);
+        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
+        assertThat(request.getPath()).isEqualTo("/dc_api/v1/rename/192.168.30.2/old_name/new_name");
+    }
+
+    // ==================== 手动操作面板测试 ====================
+
+    @Test
+    @DisplayName("screenshot() 应调用 /and_api/v1/screenshots/{ip}/{name}/{level}")
+    void screenshot_should_call_correct_path() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"code\":200,\"msg\":\"ok\",\"data\":\"base64data\"}"));
+
+        ScreenshotResp resp = mytosClient.screenshot("192.168.30.2", "instance_01", "1");
+
+        assertThat(resp.getCode()).isEqualTo(200);
+        assertThat(resp.getData()).isEqualTo("base64data");
+        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
+        assertThat(request.getPath()).isEqualTo("/and_api/v1/screenshots/192.168.30.2/instance_01/1");
+    }
+
+    @Test
+    @DisplayName("clipboardSet() 应调用 /and_api/v1/clipboard_set/{ip}/{name} 并携带 text 参数")
+    void clipboardSet_should_call_correct_path_with_text() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"code\":200,\"msg\":\"ok\"}"));
+
+        MytosBaseResp resp = mytosClient.clipboardSet("192.168.30.2", "instance_01", "hello world");
+
+        assertThat(resp.getCode()).isEqualTo(200);
+        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
+        assertThat(request.getPath()).startsWith("/and_api/v1/clipboard_set/192.168.30.2/instance_01");
+        assertThat(request.getPath()).contains("text=hello%20world");
+    }
+
+    @Test
+    @DisplayName("shell() 应调用 /and_api/v1/shell/{ip}/{name} 并 POST 命令")
+    void shell_should_post_command() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"code\":200,\"msg\":\"ok\",\"data\":\"result\"}"));
+
+        mytosClient.shell("192.168.30.2", "instance_01", "ls -l");
+
+        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
+        assertThat(request.getPath()).isEqualTo("/and_api/v1/shell/192.168.30.2/instance_01");
+        assertThat(request.getMethod()).isEqualTo("POST");
+        assertThat(request.getHeader("Content-Type")).contains("text/plain");
+        assertThat(request.getBody().readUtf8()).isEqualTo("ls -l");
+    }
+
+    // ==================== 统一执行入口测试 ====================
+
+    @Test
+    @DisplayName("execute(REBOOT_HOST) 应调用 rebootHost")
+    void execute_should_call_rebootHost_for_REBOOT_HOST() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"code\":200,\"msg\":\"ok\"}"));
+
+        MytosBaseResp resp = mytosClient.execute(OperationCode.REBOOT_HOST, null);
+
+        assertThat(resp.getCode()).isEqualTo(200);
+        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
+        assertThat(request.getPath()).isEqualTo("/host_api/v1/reboot_host/127.0.0.1");
+    }
+
+    @Test
+    @DisplayName("execute(REBOOT_ANDROID) 应携带 name 参数调用 rebootAndroid")
+    void execute_should_call_rebootAndroid_with_name() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"code\":200,\"msg\":\"ok\"}"));
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("name", "instance_01");
+        MytosBaseResp resp = mytosClient.execute(OperationCode.REBOOT_ANDROID, params);
+
+        assertThat(resp.getCode()).isEqualTo(200);
+        RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
+        assertThat(request.getPath()).isEqualTo("/dc_api/v1/reboot/127.0.0.1/instance_01");
+    }
+
+    @Test
+    @DisplayName("execute() 缺少必需参数时应抛出 IllegalArgumentException")
+    void execute_should_throw_exception_when_missing_required_param() {
+        assertThatThrownBy(() -> mytosClient.execute(OperationCode.REBOOT_ANDROID, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("name");
+    }
+
+    @Test
+    @DisplayName("execute() 未知操作码时应抛出 MytosException")
+    void execute_should_throw_exception_for_null_code() {
+        assertThatThrownBy(() -> mytosClient.execute(null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("操作码不能为空");
     }
 }

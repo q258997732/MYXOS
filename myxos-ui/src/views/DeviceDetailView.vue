@@ -20,13 +20,80 @@
       </el-tab-pane>
 
       <el-tab-pane label="手动操作" name="ops">
-        <el-button-group>
-          <el-button @click="submitOp('REBOOT')">重启</el-button>
-          <el-button @click="submitOp('ADB_ON')">开启 ADB</el-button>
-          <el-button @click="submitOp('ADB_OFF')">关闭 ADB</el-button>
-          <el-button @click="submitOp('KEEPALIVE_ON')">开启保活</el-button>
-          <el-button @click="submitOp('KEEPALIVE_OFF')">关闭保活</el-button>
-        </el-button-group>
+        <div class="op-section">
+          <h4>主机级</h4>
+          <el-button-group>
+            <el-button @click="submitOp('REBOOT_HOST')">重启主机</el-button>
+          </el-button-group>
+        </div>
+
+        <div class="op-section">
+          <h4>容器生命周期</h4>
+          <el-form inline>
+            <el-form-item label="容器名称">
+              <el-input v-model="instanceName" placeholder="请输入容器名称" style="width: 200px;" />
+            </el-form-item>
+            <el-form-item label="新名称" v-if="showRename">
+              <el-input v-model="newInstanceName" placeholder="重命名时填写" style="width: 200px;" />
+            </el-form-item>
+          </el-form>
+          <el-button-group>
+            <el-button @click="submitAndroidOp('RUN_ANDROID')">启动</el-button>
+            <el-button @click="submitAndroidOp('STOP_ANDROID')">停止</el-button>
+            <el-button @click="submitAndroidOp('REBOOT_ANDROID')">重启</el-button>
+            <el-button @click="submitAndroidOp('RESET_ANDROID')">重置</el-button>
+            <el-button @click="showRename = true; submitAndroidOp('RENAME_ANDROID')">重命名</el-button>
+          </el-button-group>
+        </div>
+
+        <div class="op-section">
+          <h4>安卓实例操作</h4>
+          <el-form inline>
+            <el-form-item label="容器名称">
+              <el-input v-model="instanceName" placeholder="请输入容器名称" style="width: 200px;" />
+            </el-form-item>
+          </el-form>
+          <el-button-group>
+            <el-button @click="submitScreenshot">截图（临时查看）</el-button>
+            <el-button @click="openDialog('clipboard')">设置剪贴板</el-button>
+            <el-button @click="submitAndroidOp('GET_CLIPBOARD')">获取剪贴板</el-button>
+            <el-button @click="openDialog('language')">设置语言</el-button>
+            <el-button @click="submitAndroidOp('REFRESH_LOCATION')">IP 智能定位</el-button>
+            <el-button @click="openDialog('shell')">执行 Adb 命令</el-button>
+          </el-button-group>
+        </div>
+
+        <!-- 截图临时预览 -->
+        <el-dialog v-model="screenshotVisible" title="设备截图" width="400px">
+          <img v-if="screenshotData" :src="screenshotData" style="max-width: 100%;" />
+          <span v-else>暂无截图数据</span>
+        </el-dialog>
+
+        <!-- 参数对话框 -->
+        <el-dialog v-model="dialogVisible" :title="dialogTitle" width="400px">
+          <el-form v-if="dialogType === 'clipboard'">
+            <el-form-item label="文本内容">
+              <el-input v-model="dialogForm.text" type="textarea" />
+            </el-form-item>
+          </el-form>
+          <el-form v-if="dialogType === 'language'">
+            <el-form-item label="国家">
+              <el-input v-model="dialogForm.country" placeholder="如 cn" />
+            </el-form-item>
+            <el-form-item label="语言">
+              <el-input v-model="dialogForm.language" placeholder="如 zh" />
+            </el-form-item>
+          </el-form>
+          <el-form v-if="dialogType === 'shell'">
+            <el-form-item label="Adb 命令">
+              <el-input v-model="dialogForm.command" type="textarea" />
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="dialogVisible = false">取消</el-button>
+            <el-button type="primary" @click="confirmDialog">确定</el-button>
+          </template>
+        </el-dialog>
       </el-tab-pane>
 
       <el-tab-pane label="最近告警" name="alarms">
@@ -74,6 +141,23 @@ const logs = reactive([])
 const tasks = reactive([])
 const chartRef = ref(null)
 
+const instanceName = ref('')
+const newInstanceName = ref('')
+const showRename = ref(false)
+
+const screenshotVisible = ref(false)
+const screenshotData = ref('')
+
+const dialogVisible = ref(false)
+const dialogType = ref('')
+const dialogTitle = ref('')
+const dialogForm = reactive({
+  text: '',
+  country: '',
+  language: '',
+  command: ''
+})
+
 async function loadDevice() {
   const res = await deviceApi.detail(deviceId)
   Object.assign(device, res.data)
@@ -94,9 +178,76 @@ async function loadTasks() {
   tasks.splice(0, tasks.length, ...res.data.records)
 }
 
-async function submitOp(code) {
-  await deviceApi.ops(deviceId, { operationCode: code })
+async function submitOp(code, params = {}) {
+  await deviceApi.ops(deviceId, { operationCode: code, params })
   ElMessage.success('任务已提交')
+}
+
+async function submitAndroidOp(code) {
+  if (!instanceName.value) {
+    ElMessage.warning('请先输入容器名称')
+    return
+  }
+  const params = { name: instanceName.value }
+  if (code === 'RENAME_ANDROID') {
+    if (!newInstanceName.value) {
+      ElMessage.warning('请输入新容器名称')
+      return
+    }
+    params.newName = newInstanceName.value
+    showRename.value = false
+  }
+  await submitOp(code, params)
+}
+
+async function submitScreenshot() {
+  if (!instanceName.value) {
+    ElMessage.warning('请先输入容器名称')
+    return
+  }
+  try {
+    const res = await deviceApi.screenshot(deviceId, {
+      name: instanceName.value,
+      level: '1'
+    })
+    const d = res.data
+    screenshotData.value = (d && (d.startsWith('data:') || d.startsWith('http'))) ? d : `data:image/png;base64,${d}`
+    screenshotVisible.value = true
+  } catch (e) {
+    ElMessage.error('截图失败：' + (e.message || '未知错误'))
+  }
+}
+
+function openDialog(type) {
+  if (!instanceName.value) {
+    ElMessage.warning('请先输入容器名称')
+    return
+  }
+  dialogType.value = type
+  if (type === 'clipboard') {
+    dialogTitle.value = '设置剪贴板'
+  } else if (type === 'language') {
+    dialogTitle.value = '设置系统语言'
+  } else if (type === 'shell') {
+    dialogTitle.value = '执行 Adb 命令'
+  }
+  dialogVisible.value = true
+}
+
+async function confirmDialog() {
+  const params = { name: instanceName.value }
+  if (dialogType.value === 'clipboard') {
+    params.text = dialogForm.text
+    await submitOp('SET_CLIPBOARD', params)
+  } else if (dialogType.value === 'language') {
+    params.country = dialogForm.country
+    params.language = dialogForm.language
+    await submitOp('SET_LANGUAGE', params)
+  } else if (dialogType.value === 'shell') {
+    params.command = dialogForm.command
+    await submitOp('SHELL_ADB', params)
+  }
+  dialogVisible.value = false
 }
 
 onMounted(() => {
@@ -106,3 +257,12 @@ onMounted(() => {
   loadTasks()
 })
 </script>
+
+<style scoped>
+.op-section {
+  margin-bottom: 20px;
+}
+.op-section h4 {
+  margin: 10px 0;
+}
+</style>

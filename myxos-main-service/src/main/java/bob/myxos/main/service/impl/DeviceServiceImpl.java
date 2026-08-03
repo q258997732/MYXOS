@@ -12,8 +12,11 @@ import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceUpdateReq;
 import bob.myxos.main.service.DeviceService;
+import bob.myxos.mytos.MytosClient;
+import bob.myxos.mytos.MytosClientFactory;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -36,6 +39,8 @@ public class DeviceServiceImpl implements DeviceService {
     private final DeviceMapper deviceMapper;
     private final DeviceGroupMapper deviceGroupMapper;
     private final OpTaskMapper opTaskMapper;
+    private final MytosClientFactory clientFactory;
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -174,9 +179,9 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
-    public Long submitOpTask(Long id, String operationCode, String params) {
+    public Long submitOpTask(Long id, String operationCode, Map<String, Object> params) {
         getDetail(id);
-        OpTask task = buildOpTask(id, operationCode, params);
+        OpTask task = buildOpTask(id, operationCode, serializeParams(params));
         opTaskMapper.insert(task);
         return task.getId();
     }
@@ -193,5 +198,24 @@ public class DeviceServiceImpl implements DeviceService {
         task.setMaxRetry(3);
         task.setScheduledAt(LocalDateTime.now());
         return task;
+    }
+
+    /** 将参数 Map 序列化为 JSON 字符串，失败时抛出业务异常 */
+    private String serializeParams(Map<String, Object> params) {
+        if (params == null || params.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(params);
+        } catch (Exception e) {
+            throw new BizException("操作参数序列化失败：" + e.getMessage());
+        }
+    }
+
+    @Override
+    public String screenshot(Long id, String name, String level) {
+        Device device = getDetail(id);
+        MytosClient client = clientFactory.create(device.getIp(), device.getPort());
+        return client.screenshot(device.getIp(), name, level).getData();
     }
 }

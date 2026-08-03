@@ -6,6 +6,8 @@ import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceUpdateReq;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
+import java.util.Map;
+
 /**
  * 设备业务接口
  */
@@ -67,8 +69,18 @@ public interface DeviceService {
      *
      * @param id            设备 ID
      * @param operationCode 操作码
-     * @param params        操作参数（JSON 字符串）
+     * @param params        操作参数（Map，可选）
      * @return 任务 ID
      */
-    Long submitOpTask(Long id, String operationCode, String params);
+    Long submitOpTask(Long id, String operationCode, Map<String, Object> params);
+
+    /**
+     * 设备截图（临时查看，不保存）
+     *
+     * @param id   设备 ID
+     * @param name 安卓容器名称
+     * @param level 截图等级
+     * @return Base64 图片数据或图片 URL
+     */
+    String screenshot(Long id, String name, String level);
 }

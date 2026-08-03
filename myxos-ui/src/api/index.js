@@ -14,6 +14,7 @@ export const deviceApi = {
   delete: (id) => request.delete(`/devices/${id}`),
   collect: (id) => request.post(`/devices/${id}/collect`),
   ops: (id, data) => request.post(`/devices/${id}/ops`, data),
+  screenshot: (id, params) => request.get(`/devices/${id}/screenshot`, { params }),
   metrics: (id, params) => request.get(`/devices/${id}/metrics`, { params }),
   alarms: (id, params) => request.get(`/devices/${id}/alarms`, { params }),
   logs: (id, params) => request.get(`/devices/${id}/logs`, { params }),

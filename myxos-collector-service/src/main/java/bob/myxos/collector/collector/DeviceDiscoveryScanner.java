@@ -8,7 +8,7 @@ import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.domain.mapper.DiscoverTaskMapper;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
-import bob.myxos.mytos.dto.InfoResp;
+import bob.myxos.mytos.dto.HealthResp;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * CIDR 网段设备发现扫描器
  * <p>
- * 对指定 CIDR 网段和端口范围并发探测，调用 MYTOS /info 接口识别设备并写入 device 表。
+ * 对指定 CIDR 网段和端口范围并发探测，调用 MYTOS /host_api/v1/healthcheck 接口识别设备并写入 device 表。
  */
 @Slf4j
 @Component
@@ -74,7 +74,7 @@ public class DeviceDiscoveryScanner {
                 executor.execute(() -> {
                     try {
                         MytosClient client = clientFactory.create(ip, p);
-                        InfoResp resp = client.info();
+                        HealthResp resp = client.healthcheck(ip);
                         if (resp.getCode() != null && resp.getCode() == 200) {
                             saveDiscoveredDevice(ip, p, resp);
                             found.incrementAndGet();
@@ -126,7 +126,7 @@ public class DeviceDiscoveryScanner {
     /**
      * 保存发现的设备，IP+端口重复时跳过
      */
-    private void saveDiscoveredDevice(String ip, int port, InfoResp resp) {
+    private void saveDiscoveredDevice(String ip, int port, HealthResp resp) {
         Long count = deviceMapper.selectCount(
                 new LambdaQueryWrapper<Device>()
                         .eq(Device::getIp, ip)
@@ -137,8 +137,8 @@ public class DeviceDiscoveryScanner {
         }
 
         String name = ip + ":" + port;
-        if (resp.getData() != null && resp.getData().getName() != null) {
-            name = resp.getData().getName();
+        if (resp.getData() != null && resp.getData().getHostIp() != null) {
+            name = resp.getData().getHostIp() + ":" + port;
         }
 
         Device device = new Device();
