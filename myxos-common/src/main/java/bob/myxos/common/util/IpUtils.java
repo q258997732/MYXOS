@@ -52,8 +52,11 @@ public final class IpUtils {
         long count = 1L << hostBits;
         int mask = (int) (0xFFFFFFFFL << hostBits);
         int base = ipv4ToInt(baseIp) & mask;
-        List<String> result = new ArrayList<>((int) Math.max(0, count - 2));
-        for (long i = 1; i < count - 1; i++) {
+        // /32 单 IP、/31 点对点链路需要特殊处理，不能简单排除网络与广播地址
+        int start = (prefix >= IPV4_BITS - 1) ? 0 : 1;
+        int end = (int) ((prefix == IPV4_BITS) ? 1 : count - 1);
+        List<String> result = new ArrayList<>((int) Math.max(0, end - start));
+        for (long i = start; i < end; i++) {
             result.add(intToIpv4(base | (int) i));
         }
         return result;

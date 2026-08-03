@@ -64,16 +64,12 @@ public class ThresholdServiceImpl implements ThresholdService {
         update.setScopeId(req.getScopeId());
         ruleMapper.updateById(update);
 
-        // 逻辑删除旧动作
-        List<ThresholdAction> oldActions = actionMapper.selectList(
-                new LambdaQueryWrapper<ThresholdAction>()
-                        .eq(ThresholdAction::getRuleId, id)
-                        .eq(ThresholdAction::getDeleted, 0));
-        if (oldActions != null && !oldActions.isEmpty()) {
-            for (ThresholdAction a : oldActions) {
-                actionMapper.deleteById(a.getId());
-            }
-        }
+        // 逻辑删除旧动作（批量更新）
+        ThresholdAction deleted = new ThresholdAction();
+        deleted.setDeleted(1);
+        actionMapper.update(deleted, new LambdaQueryWrapper<ThresholdAction>()
+                .eq(ThresholdAction::getRuleId, id)
+                .eq(ThresholdAction::getDeleted, 0));
 
         // 插入新动作
         saveActions(id, req.getActions());
@@ -92,11 +88,12 @@ public class ThresholdServiceImpl implements ThresholdService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void toggle(Long id) {
+    public void toggle(Long id, Integer enabled) {
         ThresholdRule existing = requireRule(id);
         ThresholdRule update = new ThresholdRule();
         update.setId(id);
-        update.setEnabled(existing.getEnabled() != null && existing.getEnabled() == 1 ? 0 : 1);
+        int target = enabled != null ? enabled : (existing.getEnabled() != null && existing.getEnabled() == 1 ? 0 : 1);
+        update.setEnabled(target);
         ruleMapper.updateById(update);
     }
 
@@ -143,16 +140,12 @@ public class ThresholdServiceImpl implements ThresholdService {
         requireRule(id);
         // 逻辑删除规则
         ruleMapper.deleteById(id);
-        // 逻辑删除关联动作
-        List<ThresholdAction> actions = actionMapper.selectList(
-                new LambdaQueryWrapper<ThresholdAction>()
-                        .eq(ThresholdAction::getRuleId, id)
-                        .eq(ThresholdAction::getDeleted, 0));
-        if (actions != null && !actions.isEmpty()) {
-            for (ThresholdAction a : actions) {
-                actionMapper.deleteById(a.getId());
-            }
-        }
+        // 逻辑删除关联动作（批量更新）
+        ThresholdAction deleted = new ThresholdAction();
+        deleted.setDeleted(1);
+        actionMapper.update(deleted, new LambdaQueryWrapper<ThresholdAction>()
+                .eq(ThresholdAction::getRuleId, id)
+                .eq(ThresholdAction::getDeleted, 0));
     }
 
     /**
@@ -187,7 +180,8 @@ public class ThresholdServiceImpl implements ThresholdService {
             action.setLogLevel(req.getLogLevel());
             action.setOperationCode(req.getOperationCode());
             action.setOperationParams(req.getOperationParams());
-            action.setSort(req.getSort() != null ? req.getSort() : sort++);
+            // 后端统一覆盖 sort，保证顺序稳定
+            action.setSort(sort++);
             actionMapper.insert(action);
         }
     }

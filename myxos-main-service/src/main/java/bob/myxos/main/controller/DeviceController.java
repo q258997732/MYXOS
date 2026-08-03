@@ -2,7 +2,11 @@ package bob.myxos.main.controller;
 
 import bob.myxos.common.api.PageResult;
 import bob.myxos.common.api.Result;
+import bob.myxos.domain.entity.ActionLog;
+import bob.myxos.domain.entity.AlarmEvent;
 import bob.myxos.domain.entity.Device;
+import bob.myxos.domain.entity.MetricSnapshot;
+import bob.myxos.domain.entity.OpTask;
 import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceOpReq;
@@ -26,6 +30,7 @@ import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Pattern;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -163,5 +168,93 @@ public class DeviceController {
                                        String level) {
         String data = deviceService.screenshot(id, name, level);
         return Result.ok(data);
+    }
+
+    /**
+     * 分页查询设备指标快照
+     *
+     * @param id   设备 ID
+     * @param page 当前页
+     * @param size 每页大小
+     * @return 指标快照分页结果
+     */
+    @GetMapping("/{id}/metrics")
+    public Result<PageResult<MetricSnapshot>> metrics(@PathVariable Long id,
+                                                          @RequestParam(defaultValue = "1") Long page,
+                                                          @RequestParam(defaultValue = "20") Long size) {
+        Page<MetricSnapshot> p = deviceService.listMetrics(id, page, size);
+        return Result.ok(toPageResult(p));
+    }
+
+    /**
+     * 分页查询设备告警事件
+     *
+     * @param id   设备 ID
+     * @param page 当前页
+     * @param size 每页大小
+     * @return 告警事件分页结果
+     */
+    @GetMapping("/{id}/alarms")
+    public Result<PageResult<AlarmEvent>> alarms(@PathVariable Long id,
+                                                     @RequestParam(defaultValue = "1") Long page,
+                                                     @RequestParam(defaultValue = "20") Long size) {
+        Page<AlarmEvent> p = deviceService.listAlarms(id, page, size);
+        return Result.ok(toPageResult(p));
+    }
+
+    /**
+     * 分页查询设备动作日志
+     *
+     * @param id   设备 ID
+     * @param page 当前页
+     * @param size 每页大小
+     * @return 动作日志分页结果
+     */
+    @GetMapping("/{id}/logs")
+    public Result<PageResult<ActionLog>> logs(@PathVariable Long id,
+                                                   @RequestParam(defaultValue = "1") Long page,
+                                                   @RequestParam(defaultValue = "50") Long size) {
+        Page<ActionLog> p = deviceService.listLogs(id, page, size);
+        return Result.ok(toPageResult(p));
+    }
+
+    /**
+     * 分页查询设备运维任务
+     *
+     * @param id   设备 ID
+     * @param page 当前页
+     * @param size 每页大小
+     * @return 运维任务分页结果
+     */
+    @GetMapping("/{id}/tasks")
+    public Result<PageResult<OpTask>> tasks(@PathVariable Long id,
+                                                  @RequestParam(defaultValue = "1") Long page,
+                                                  @RequestParam(defaultValue = "20") Long size) {
+        Page<OpTask> p = deviceService.listOpTasks(id, page, size);
+        return Result.ok(toPageResult(p));
+    }
+
+    /**
+     * 查询设备上的安卓实例名称列表
+     *
+     * @param id 设备 ID
+     * @return 安卓实例名称列表
+     */
+    @GetMapping("/{id}/androids")
+    public Result<List<String>> androids(@PathVariable Long id) {
+        return Result.ok(deviceService.listAndroidInstances(id));
+    }
+
+    /**
+     * 将 MyBatis-Plus Page 转换为通用分页结果
+     */
+    private <T> PageResult<T> toPageResult(Page<T> page) {
+        PageResult<T> result = new PageResult<>();
+        result.setTotal(page.getTotal());
+        result.setPages(page.getPages());
+        result.setCurrent(page.getCurrent());
+        result.setSize(page.getSize());
+        result.setRecords(page.getRecords());
+        return result;
     }
 }

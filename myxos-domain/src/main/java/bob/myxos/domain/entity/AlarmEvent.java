@@ -45,6 +45,10 @@ public class AlarmEvent {
     /** 状态：FIRING / RESOLVED */
     private String status;
 
+    /** 触发规则名称（非持久化，查询时填充） */
+    @TableField(exist = false)
+    private String ruleName;
+
     /** 创建人 */
     @TableField(fill = FieldFill.INSERT)
     private String whoCreated;

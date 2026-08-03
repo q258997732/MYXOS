@@ -30,11 +30,17 @@ public class DiscoverTask {
     /** 结束端口 */
     private Integer portTo;
 
-    /** 状态：PENDING / RUNNING / SUCCESS / FAILED */
+    /** 状态：PENDING / RUNNING / DONE / TIMEOUT / FAILED */
     private String status;
 
     /** 发现的设备数量 */
     private Integer foundCount;
+
+    /** 待扫描 IP 总数 */
+    private Integer totalIpCount;
+
+    /** 已扫描 IP 数量 */
+    private Integer scannedIpCount;
 
     /** 开始时间 */
     private LocalDateTime startedAt;

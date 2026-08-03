@@ -1,11 +1,16 @@
 package bob.myxos.main.service;
 
+import bob.myxos.domain.entity.ActionLog;
+import bob.myxos.domain.entity.AlarmEvent;
 import bob.myxos.domain.entity.Device;
+import bob.myxos.domain.entity.MetricSnapshot;
+import bob.myxos.domain.entity.OpTask;
 import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceUpdateReq;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -83,4 +88,52 @@ public interface DeviceService {
      * @return Base64 图片数据或图片 URL
      */
     String screenshot(Long id, String name, String level);
+
+    /**
+     * 分页查询设备指标快照
+     *
+     * @param id   设备 ID
+     * @param page 当前页
+     * @param size 每页大小
+     * @return 指标快照分页结果
+     */
+    Page<MetricSnapshot> listMetrics(Long id, Long page, Long size);
+
+    /**
+     * 分页查询设备告警事件
+     *
+     * @param id   设备 ID
+     * @param page 当前页
+     * @param size 每页大小
+     * @return 告警事件分页结果
+     */
+    Page<AlarmEvent> listAlarms(Long id, Long page, Long size);
+
+    /**
+     * 分页查询设备动作日志
+     *
+     * @param id   设备 ID
+     * @param page 当前页
+     * @param size 每页大小
+     * @return 动作日志分页结果
+     */
+    Page<ActionLog> listLogs(Long id, Long page, Long size);
+
+    /**
+     * 查询设备上运行的安卓实例名称列表
+     *
+     * @param id 设备 ID
+     * @return 安卓实例名称列表
+     */
+    List<String> listAndroidInstances(Long id);
+
+    /**
+     * 分页查询设备运维任务
+     *
+     * @param id   设备 ID
+     * @param page 当前页
+     * @param size 每页大小
+     * @return 运维任务分页结果
+     */
+    Page<OpTask> listOpTasks(Long id, Long page, Long size);
 }

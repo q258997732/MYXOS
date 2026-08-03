@@ -5,6 +5,8 @@ import bob.myxos.domain.entity.DiscoverTask;
 import bob.myxos.domain.mapper.DiscoverTaskMapper;
 import bob.myxos.main.dto.DiscoverReq;
 import bob.myxos.main.service.DiscoverService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,8 +34,34 @@ public class DiscoverServiceImpl implements DiscoverService {
         task.setPortTo(req.getPortTo());
         task.setStatus("PENDING");
         task.setFoundCount(0);
+        task.setTotalIpCount(ips.size());
+        task.setScannedIpCount(0);
         task.setMessage("待扫描 IP 数：" + ips.size());
         discoverTaskMapper.insert(task);
         return task;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<DiscoverTask> list(Long page, Long size) {
+        LambdaQueryWrapper<DiscoverTask> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(DiscoverTask::getDeleted, 0);
+        wrapper.orderByDesc(DiscoverTask::getStartedAt);
+        return discoverTaskMapper.selectPage(new Page<>(page, size), wrapper);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void delete(Long id) {
+        discoverTaskMapper.deleteById(id);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void clear() {
+        LambdaQueryWrapper<DiscoverTask> wrapper = new LambdaQueryWrapper<>();
+        wrapper.in(DiscoverTask::getStatus, "DONE", "FAILED");
+        wrapper.eq(DiscoverTask::getDeleted, 0);
+        discoverTaskMapper.delete(wrapper);
     }
 }

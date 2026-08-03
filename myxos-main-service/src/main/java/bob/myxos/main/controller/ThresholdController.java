@@ -6,7 +6,6 @@ import bob.myxos.domain.entity.ThresholdAction;
 import bob.myxos.domain.entity.ThresholdRule;
 import bob.myxos.main.dto.ThresholdRuleReq;
 import bob.myxos.main.service.ThresholdService;
-import bob.myxos.main.service.impl.ThresholdServiceImpl;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -81,7 +80,7 @@ public class ThresholdController {
     @GetMapping("/{id}")
     public Result<Map<String, Object>> detail(@PathVariable Long id) {
         ThresholdRule rule = thresholdService.detail(id);
-        List<ThresholdAction> actions = ((ThresholdServiceImpl) thresholdService).listActions(id);
+        List<ThresholdAction> actions = thresholdService.listActions(id);
         Map<String, Object> data = new HashMap<>(4);
         data.put("rule", rule);
         data.put("actions", actions);
@@ -117,13 +116,15 @@ public class ThresholdController {
     /**
      * 切换启用状态
      *
-     * @param id 规则 ID
+     * @param id      规则 ID
+     * @param enabled 可选目标状态（不传则自动取反）
      * @return 空响应
      */
     @PostMapping("/{id}/toggle")
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
-    public Result<Void> toggle(@PathVariable Long id) {
-        thresholdService.toggle(id);
+    public Result<Void> toggle(@PathVariable Long id,
+                                   @RequestParam(required = false) Integer enabled) {
+        thresholdService.toggle(id, enabled);
         return Result.ok();
     }
 }

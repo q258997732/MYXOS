@@ -1,8 +1,11 @@
 package bob.myxos.main.service;
 
+import bob.myxos.domain.entity.ThresholdAction;
 import bob.myxos.domain.entity.ThresholdRule;
 import bob.myxos.main.dto.ThresholdRuleReq;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+
+import java.util.List;
 
 /**
  * 阈值规则业务接口
@@ -27,11 +30,12 @@ public interface ThresholdService {
     ThresholdRule update(Long id, ThresholdRuleReq req);
 
     /**
-     * 切换启用状态（1 ↔ 0）
+     * 切换启用状态（1 ↔ 0，可指定目标状态）
      *
-     * @param id 规则 ID
+     * @param id      规则 ID
+     * @param enabled 目标状态（null 则自动取反）
      */
-    void toggle(Long id);
+    void toggle(Long id, Integer enabled);
 
     /**
      * 分页查询规则
@@ -51,6 +55,14 @@ public interface ThresholdService {
      * @return 规则实体（动作通过扩展字段返回）
      */
     ThresholdRule detail(Long id);
+
+    /**
+     * 查询规则的动作列表（按 sort 升序）
+     *
+     * @param ruleId 规则 ID
+     * @return 动作列表
+     */
+    List<ThresholdAction> listActions(Long ruleId);
 
     /**
      * 删除规则及其动作（逻辑删除）

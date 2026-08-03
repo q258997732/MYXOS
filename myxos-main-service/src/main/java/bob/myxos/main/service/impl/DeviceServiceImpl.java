@@ -2,28 +2,38 @@ package bob.myxos.main.service.impl;
 
 import bob.myxos.common.enums.DeviceStatus;
 import bob.myxos.common.exception.BizException;
+import bob.myxos.domain.entity.ActionLog;
+import bob.myxos.domain.entity.AlarmEvent;
 import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.DeviceGroup;
+import bob.myxos.domain.entity.MetricSnapshot;
 import bob.myxos.domain.entity.OpTask;
+import bob.myxos.domain.mapper.ActionLogMapper;
+import bob.myxos.domain.mapper.AlarmEventMapper;
 import bob.myxos.domain.mapper.DeviceGroupMapper;
 import bob.myxos.domain.mapper.DeviceMapper;
+import bob.myxos.domain.mapper.MetricSnapshotMapper;
 import bob.myxos.domain.mapper.OpTaskMapper;
+import bob.myxos.domain.mapper.ThresholdRuleMapper;
 import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceUpdateReq;
 import bob.myxos.main.service.DeviceService;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
+import bob.myxos.mytos.dto.AndroidListResp;
 import bob.myxos.mytos.dto.ScreenshotResp;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -40,6 +50,10 @@ public class DeviceServiceImpl implements DeviceService {
     private final DeviceMapper deviceMapper;
     private final DeviceGroupMapper deviceGroupMapper;
     private final OpTaskMapper opTaskMapper;
+    private final MetricSnapshotMapper metricSnapshotMapper;
+    private final AlarmEventMapper alarmEventMapper;
+    private final ActionLogMapper actionLogMapper;
+    private final ThresholdRuleMapper thresholdRuleMapper;
     private final MytosClientFactory clientFactory;
     private final ObjectMapper objectMapper;
 
@@ -142,8 +156,12 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Device updateDevice(Long id, DeviceUpdateReq req) {
         Device existing = getDetail(id);
+        if (req.getGroupId() != null) {
+            validateGroupId(req.getGroupId());
+        }
         Device update = new Device();
         update.setId(id);
         if (req.getName() != null) {
@@ -242,5 +260,106 @@ public class DeviceServiceImpl implements DeviceService {
             return image;
         }
         throw new BizException("截图数据格式不合法");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<MetricSnapshot> listMetrics(Long id, Long page, Long size) {
+        getDetail(id);
+        LambdaQueryWrapper<MetricSnapshot> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(MetricSnapshot::getDeviceId, id);
+        wrapper.eq(MetricSnapshot::getDeleted, 0);
+        wrapper.orderByDesc(MetricSnapshot::getCollectedAt);
+        return metricSnapshotMapper.selectPage(new Page<>(page, size), wrapper);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<AlarmEvent> listAlarms(Long id, Long page, Long size) {
+        getDetail(id);
+        LambdaQueryWrapper<AlarmEvent> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(AlarmEvent::getDeviceId, id);
+        wrapper.eq(AlarmEvent::getDeleted, 0);
+        wrapper.orderByDesc(AlarmEvent::getFiredAt);
+        Page<AlarmEvent> result = alarmEventMapper.selectPage(new Page<>(page, size), wrapper);
+        fillAlarmRuleNames(result.getRecords());
+        return result;
+    }
+
+    /** 批量填充告警事件的规则名称 */
+    private void fillAlarmRuleNames(List<AlarmEvent> records) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        List<Long> ruleIds = records.stream()
+                .map(AlarmEvent::getRuleId)
+                .distinct()
+                .collect(Collectors.toList());
+        if (ruleIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> nameMap = thresholdRuleMapper.selectBatchIds(ruleIds).stream()
+                .collect(Collectors.toMap(r -> r.getId(), r -> r.getName() == null ? "" : r.getName()));
+        for (AlarmEvent event : records) {
+            event.setRuleName(nameMap.getOrDefault(event.getRuleId(), ""));
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ActionLog> listLogs(Long id, Long page, Long size) {
+        getDetail(id);
+        LambdaQueryWrapper<ActionLog> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ActionLog::getDeviceId, id);
+        wrapper.eq(ActionLog::getDeleted, 0);
+        wrapper.orderByDesc(ActionLog::getCreatedAt);
+        return actionLogMapper.selectPage(new Page<>(page, size), wrapper);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<OpTask> listOpTasks(Long id, Long page, Long size) {
+        getDetail(id);
+        LambdaQueryWrapper<OpTask> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(OpTask::getDeviceId, id);
+        wrapper.eq(OpTask::getDeleted, 0);
+        wrapper.orderByDesc(OpTask::getWhenCreated);
+        return opTaskMapper.selectPage(new Page<>(page, size), wrapper);
+    }
+
+    @Override
+    public List<String> listAndroidInstances(Long id) {
+        Device device = getDetail(id);
+        MytosClient client = clientFactory.create(device.getIp(), device.getPort());
+        AndroidListResp resp = client.listAndroid(device.getIp());
+        if (resp == null) {
+            throw new BizException("获取安卓实例列表失败：设备无响应");
+        }
+        if (resp.getCode() == null || resp.getCode() != 200) {
+            throw new BizException("获取安卓实例列表失败：" + (resp.getMsg() != null ? resp.getMsg() : "未知错误"));
+        }
+        return parseAndroidNames(resp.getData());
+    }
+
+    /**
+     * 解析 MYTOS 返回的安卓实例数据为名称列表
+     * 支持字符串数组或对象数组（取 name 字段）
+     */
+    private List<String> parseAndroidNames(JsonNode data) {
+        if (data == null || !data.isArray()) {
+            return Collections.emptyList();
+        }
+        List<String> names = new ArrayList<>(data.size());
+        for (JsonNode node : data) {
+            if (node.isTextual()) {
+                names.add(node.asText());
+            } else if (node.isObject()) {
+                JsonNode nameNode = node.get("name");
+                if (nameNode != null && !nameNode.isNull()) {
+                    names.add(nameNode.asText());
+                }
+            }
+        }
+        return names;
     }
 }

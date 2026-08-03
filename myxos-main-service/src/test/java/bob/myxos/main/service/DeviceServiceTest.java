@@ -6,14 +6,18 @@ import bob.myxos.common.exception.BizException;
 import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.DeviceGroup;
 import bob.myxos.domain.entity.OpTask;
+import bob.myxos.domain.mapper.ActionLogMapper;
+import bob.myxos.domain.mapper.AlarmEventMapper;
 import bob.myxos.domain.mapper.DeviceGroupMapper;
 import bob.myxos.domain.mapper.DeviceMapper;
+import bob.myxos.domain.mapper.MetricSnapshotMapper;
 import bob.myxos.domain.mapper.OpTaskMapper;
+import bob.myxos.domain.mapper.ThresholdRuleMapper;
 import bob.myxos.main.dto.DeviceCreateReq;
-import bob.myxos.mytos.MytosClientFactory;
 import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceUpdateReq;
 import bob.myxos.main.service.impl.DeviceServiceImpl;
+import bob.myxos.mytos.MytosClientFactory;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -60,6 +64,18 @@ class DeviceServiceTest {
     private OpTaskMapper opTaskMapper;
 
     @Mock
+    private MetricSnapshotMapper metricSnapshotMapper;
+
+    @Mock
+    private AlarmEventMapper alarmEventMapper;
+
+    @Mock
+    private ActionLogMapper actionLogMapper;
+
+    @Mock
+    private ThresholdRuleMapper thresholdRuleMapper;
+
+    @Mock
     private MytosClientFactory mytosClientFactory;
 
     @Mock
@@ -69,7 +85,9 @@ class DeviceServiceTest {
 
     @BeforeEach
     void setUp() {
-        deviceService = new DeviceServiceImpl(deviceMapper, deviceGroupMapper, opTaskMapper, mytosClientFactory, objectMapper);
+        deviceService = new DeviceServiceImpl(deviceMapper, deviceGroupMapper, opTaskMapper,
+                metricSnapshotMapper, alarmEventMapper, actionLogMapper, thresholdRuleMapper,
+                mytosClientFactory, objectMapper);
     }
 
     /** 构造合法的创建请求 */

@@ -58,7 +58,7 @@ class IpUtilsTest {
     }
 
     @Test
-    void 展开32位主机网段应返回空列表() {
+    void 展开32位主机网段应返回单个IP() {
         // Arrange
         String cidr = "192.168.1.1/32";
 
@@ -66,7 +66,8 @@ class IpUtilsTest {
         List<String> ips = IpUtils.expandCidr(cidr);
 
         // Assert
-        assertTrue(ips.isEmpty());
+        assertEquals(1, ips.size());
+        assertEquals("192.168.1.1", ips.get(0));
     }
 
     @Test

@@ -17,7 +17,9 @@ const routes = [
     children: [
       { path: 'dashboard', name: 'Dashboard', component: () => import('@/views/DashboardView.vue') },
       { path: 'devices', name: 'DeviceList', component: () => import('@/views/DeviceListView.vue') },
+      { path: 'devices/create', name: 'DeviceCreate', component: () => import('@/views/DeviceCreateEditView.vue') },
       { path: 'devices/:id', name: 'DeviceDetail', component: () => import('@/views/DeviceDetailView.vue') },
+      { path: 'devices/:id/edit', name: 'DeviceEdit', component: () => import('@/views/DeviceCreateEditView.vue') },
       { path: 'thresholds', name: 'ThresholdList', component: () => import('@/views/ThresholdListView.vue') },
       { path: 'thresholds/edit', name: 'ThresholdCreate', component: () => import('@/views/ThresholdEditView.vue') },
       { path: 'thresholds/edit/:id', name: 'ThresholdEdit', component: () => import('@/views/ThresholdEditView.vue') },

@@ -1,6 +1,6 @@
 <template>
   <el-container class="layout">
-    <el-aside width="200px" class="sidebar">
+    <el-aside class="sidebar">
       <div class="logo">MYXOS</div>
       <el-menu
         :default-active="$route.path"
@@ -10,31 +10,40 @@
         active-text-color="#409EFF"
       >
         <el-menu-item index="/dashboard">
-          <template #title>仪表盘</template>
+          <el-icon><DataLine /></el-icon>
+          <span>仪表盘</span>
         </el-menu-item>
         <el-menu-item index="/devices">
-          <template #title>设备列表</template>
+          <el-icon><Monitor /></el-icon>
+          <span>设备列表</span>
         </el-menu-item>
         <el-menu-item index="/thresholds">
-          <template #title>阈值规则</template>
+          <el-icon><Bell /></el-icon>
+          <span>阈值规则</span>
         </el-menu-item>
         <el-menu-item index="/hosting">
-          <template #title>设备托管</template>
+          <el-icon><Connection /></el-icon>
+          <span>设备托管</span>
         </el-menu-item>
         <el-menu-item index="/alarms">
-          <template #title>告警列表</template>
+          <el-icon><Warning /></el-icon>
+          <span>告警列表</span>
         </el-menu-item>
         <el-menu-item index="/logs">
-          <template #title>日志查询</template>
+          <el-icon><Document /></el-icon>
+          <span>日志查询</span>
         </el-menu-item>
         <el-menu-item index="/op-tasks">
-          <template #title>任务队列</template>
+          <el-icon><List /></el-icon>
+          <span>任务队列</span>
         </el-menu-item>
         <el-menu-item index="/settings">
-          <template #title>系统配置</template>
+          <el-icon><Setting /></el-icon>
+          <span>系统配置</span>
         </el-menu-item>
         <el-menu-item v-if="userStore.isAdmin" index="/users">
-          <template #title>用户管理</template>
+          <el-icon><User /></el-icon>
+          <span>用户管理</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -73,11 +82,12 @@ async function logout() {
   height: 100%;
 }
 .sidebar {
-  background-color: #304156;
+  width: var(--sidebar-width) !important;
+  background-color: var(--sidebar-bg);
 }
 .logo {
-  height: 60px;
-  line-height: 60px;
+  height: var(--header-height);
+  line-height: var(--header-height);
   text-align: center;
   color: #fff;
   font-size: 20px;
@@ -88,11 +98,13 @@ async function logout() {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 16px;
+  gap: var(--spacing-md);
+  height: var(--header-height);
   background-color: #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 .main {
-  background-color: #f0f2f5;
+  background-color: var(--content-bg);
+  padding: var(--spacing-md);
 }
 </style>

@@ -15,6 +15,7 @@ export const deviceApi = {
   collect: (id) => request.post(`/devices/${id}/collect`),
   ops: (id, data) => request.post(`/devices/${id}/ops`, data),
   screenshot: (id, params) => request.get(`/devices/${id}/screenshot`, { params }),
+  androids: (id) => request.get(`/devices/${id}/androids`),
   metrics: (id, params) => request.get(`/devices/${id}/metrics`, { params }),
   alarms: (id, params) => request.get(`/devices/${id}/alarms`, { params }),
   logs: (id, params) => request.get(`/devices/${id}/logs`, { params }),
@@ -31,7 +32,7 @@ export const thresholdApi = {
   detail: (id) => request.get(`/thresholds/${id}`),
   update: (id, data) => request.put(`/thresholds/${id}`, data),
   delete: (id) => request.delete(`/thresholds/${id}`),
-  toggle: (id) => request.post(`/thresholds/${id}/toggle`)
+  toggle: (id, enabled) => request.post(`/thresholds/${id}/toggle`, { enabled })
 }
 
 export const alarmApi = {
@@ -50,19 +51,21 @@ export const opTaskApi = {
 
 export const discoverApi = {
   scan: (data) => request.post('/discover/scan', data),
-  tasks: () => request.get('/discover/tasks')
+  tasks: (params) => request.get('/discover/tasks', { params }),
+  deleteTask: (id) => request.delete(`/discover/tasks/${id}`),
+  clearTasks: () => request.delete('/discover/tasks')
 }
 
 export const sysConfigApi = {
   list: () => request.get('/sys-config'),
-  update: (key, value) => request.put(`/sys-config/${key}?value=${encodeURIComponent(value)}`)
+  update: (key, value) => request.put(`/sys-config/${key}`, { value })
 }
 
 export const userApi = {
-  list: () => request.get('/users'),
+  list: (params) => request.get('/users', { params }),
   create: (data) => request.post('/users', data),
   update: (id, data) => request.put(`/users/${id}`, data),
-  resetPassword: (id) => request.post(`/users/${id}/reset-password`),
+  resetPassword: (id, password) => request.post(`/users/${id}/reset-password`, { password }),
   toggleStatus: (id) => request.post(`/users/${id}/toggle-status`),
   changePassword: (data) => request.post('/users/me/password', data)
 }
