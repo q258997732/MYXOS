@@ -6,8 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 /**
  * MYTOS 设备 HTTP API 客户端
@@ -22,6 +24,14 @@ public class MytosClient {
 
     /** 成功状态码 */
     private static final int CODE_SUCCESS = 200;
+
+    /** Shell 命令最大长度 */
+    private static final int SHELL_COMMAND_MAX_LENGTH = 500;
+
+    /** 禁止执行的 Shell 命令模式（不区分大小写） */
+    private static final Pattern DANGEROUS_SHELL_PATTERN = Pattern.compile(
+            "\\b(rm\\s+-rf|reboot|shutdown|dd\\s+if=|mkfs|format|su\\b|mount\\s+-o\\s+remount)\\b",
+            Pattern.CASE_INSENSITIVE);
 
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -283,8 +293,27 @@ public class MytosClient {
         requireNonBlank(ip, "ip 不能为空");
         requireSafePathSegment(name, "name 不能为空");
         requireNonBlank(command, "command 不能为空");
-        return doPostBody("/and_api/v1/shell/" + ip + "/" + name, command,
-                MediaType.parse("text/plain; charset=utf-8"), ShellResp.class);
+        validateShellCommand(command);
+        String body;
+        try {
+            body = objectMapper.writeValueAsString(Collections.singletonMap("cmd", command));
+        } catch (Exception e) {
+            throw new MytosException("shell 命令序列化失败: " + e.getMessage(), e);
+        }
+        return doPostBody("/and_api/v1/shell/" + ip + "/" + name, body,
+                MediaType.parse("application/json; charset=utf-8"), ShellResp.class);
+    }
+
+    /**
+     * 校验 shell 命令：限制长度并拦截常见高危操作
+     */
+    private void validateShellCommand(String command) {
+        if (command.length() > SHELL_COMMAND_MAX_LENGTH) {
+            throw new IllegalArgumentException("shell 命令长度超过限制: " + SHELL_COMMAND_MAX_LENGTH);
+        }
+        if (DANGEROUS_SHELL_PATTERN.matcher(command).find()) {
+            throw new IllegalArgumentException("shell 命令包含被禁止的高危操作");
+        }
     }
 
     /**

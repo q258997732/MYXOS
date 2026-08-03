@@ -103,7 +103,7 @@ class MytosClientTest {
     @Test
     @DisplayName("getHostVer() 成功时应正确解析版本号")
     void getHostVer_should_parse_version_when_success() throws Exception {
-        String responseBody = "{\"code\":200,\"msg\":\"3\"}";
+        String responseBody = "{\"code\":200,\"data\":\"QL-q1-2024.v0.2.9\",\"message\":\"success\"}";
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
@@ -113,7 +113,8 @@ class MytosClientTest {
 
         assertThat(resp).isNotNull();
         assertThat(resp.getCode()).isEqualTo(200);
-        assertThat(resp.getMsg()).isEqualTo("3");
+        assertThat(resp.getData()).isEqualTo("QL-q1-2024.v0.2.9");
+        assertThat(resp.getMsg()).isEqualTo("success");
 
         RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
         assertThat(request.getPath()).isEqualTo("/dc_api/v1/get_host_ver/192.168.30.2");
@@ -206,12 +207,14 @@ class MytosClientTest {
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
-                .setBody("{\"code\":200,\"msg\":\"ok\",\"data\":\"base64data\"}"));
+                .setBody("{\"code\":200,\"message\":\"/9j/base64data\",\"data\":{\"url\":\"http://host/snap\"}}"));
 
         ScreenshotResp resp = mytosClient.screenshot("192.168.30.2", "instance_01", "1");
 
         assertThat(resp.getCode()).isEqualTo(200);
-        assertThat(resp.getData()).isEqualTo("base64data");
+        assertThat(resp.getMsg()).isEqualTo("/9j/base64data");
+        assertThat(resp.getData()).isNotNull();
+        assertThat(resp.getData().get("url").asText()).isEqualTo("http://host/snap");
         RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
         assertThat(request.getPath()).isEqualTo("/and_api/v1/screenshots/192.168.30.2/instance_01/1");
     }
@@ -233,20 +236,41 @@ class MytosClientTest {
     }
 
     @Test
-    @DisplayName("shell() 应调用 /and_api/v1/shell/{ip}/{name} 并 POST 命令")
-    void shell_should_post_command() throws Exception {
+    @DisplayName("shell() 应调用 /and_api/v1/shell/{ip}/{name} 并 POST JSON 命令")
+    void shell_should_post_json_command() throws Exception {
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
-                .setBody("{\"code\":200,\"msg\":\"ok\",\"data\":\"result\"}"));
+                .setBody("{\"code\":200,\"message\":\"/\\r\\n\",\"data\":{\"shell_code\":0}}"));
 
         mytosClient.shell("192.168.30.2", "instance_01", "ls -l");
 
         RecordedRequest request = mockWebServer.takeRequest(1, TimeUnit.SECONDS);
         assertThat(request.getPath()).isEqualTo("/and_api/v1/shell/192.168.30.2/instance_01");
         assertThat(request.getMethod()).isEqualTo("POST");
-        assertThat(request.getHeader("Content-Type")).contains("text/plain");
-        assertThat(request.getBody().readUtf8()).isEqualTo("ls -l");
+        assertThat(request.getHeader("Content-Type")).contains("application/json");
+        assertThat(request.getBody().readUtf8()).isEqualTo("{\"cmd\":\"ls -l\"}");
+    }
+
+    @Test
+    @DisplayName("shell() 应拒绝包含高危操作的命令")
+    void shell_should_reject_dangerous_command() {
+        assertThatThrownBy(() -> mytosClient.shell("192.168.30.2", "instance_01", "rm -rf /data"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("高危");
+    }
+
+    @Test
+    @DisplayName("shell() 应拒绝超长命令")
+    void shell_should_reject_too_long_command() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 501; i++) {
+            sb.append('a');
+        }
+        String longCommand = sb.toString();
+        assertThatThrownBy(() -> mytosClient.shell("192.168.30.2", "instance_01", longCommand))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("长度");
     }
 
     // ==================== 统一执行入口测试 ====================

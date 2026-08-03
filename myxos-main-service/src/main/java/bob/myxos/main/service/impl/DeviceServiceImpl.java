@@ -14,6 +14,7 @@ import bob.myxos.main.dto.DeviceUpdateReq;
 import bob.myxos.main.service.DeviceService;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
+import bob.myxos.mytos.dto.ScreenshotResp;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -216,6 +217,30 @@ public class DeviceServiceImpl implements DeviceService {
     public String screenshot(Long id, String name, String level) {
         Device device = getDetail(id);
         MytosClient client = clientFactory.create(device.getIp(), device.getPort());
-        return client.screenshot(device.getIp(), name, level).getData();
+        ScreenshotResp resp = client.screenshot(device.getIp(), name, level);
+        // 设备端将图片 Base64 放在 message/msg 字段，data 为对象（含 url）
+        String image = resp.getMsg();
+        if (image == null || image.isEmpty()) {
+            if (resp.getData() != null && resp.getData().has("url")) {
+                image = resp.getData().get("url").asText();
+            }
+        }
+        return validateImageData(image);
+    }
+
+    /**
+     * 校验截图返回数据：只允许已知图片 Base64 前缀或 http(s) URL
+     */
+    private String validateImageData(String image) {
+        if (image == null || image.isEmpty()) {
+            throw new BizException("截图数据为空");
+        }
+        if (image.startsWith("http://") || image.startsWith("https://")) {
+            return image;
+        }
+        if (image.startsWith("/9j/") || image.startsWith("iVBORw0KGgo")) {
+            return image;
+        }
+        throw new BizException("截图数据格式不合法");
     }
 }

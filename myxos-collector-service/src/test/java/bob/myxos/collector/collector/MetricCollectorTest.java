@@ -60,7 +60,7 @@ class MetricCollectorTest {
         HealthResp health = new HealthResp();
         health.setCode(200);
         HostVerResp version = new HostVerResp();
-        version.setMsg("1.2.3");
+        version.setData("1.2.3");
 
         when(clientFactory.create(anyString(), anyInt())).thenReturn(client);
         when(client.healthcheck(anyString())).thenReturn(health);

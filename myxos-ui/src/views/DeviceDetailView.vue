@@ -211,11 +211,33 @@ async function submitScreenshot() {
       level: '1'
     })
     const d = res.data
-    screenshotData.value = (d && (d.startsWith('data:') || d.startsWith('http'))) ? d : `data:image/png;base64,${d}`
+    screenshotData.value = normalizeImageData(d)
     screenshotVisible.value = true
   } catch (e) {
     ElMessage.error('截图失败：' + (e.message || '未知错误'))
   }
+}
+
+function normalizeImageData(d) {
+  if (!d) {
+    return ''
+  }
+  if (d.startsWith('data:image/jpeg') || d.startsWith('data:image/png')) {
+    return d
+  }
+  if (d.startsWith('http://') || d.startsWith('https://')) {
+    return d
+  }
+  // MYTOS 设备返回的是 JPEG Base64（以 /9j/ 开头）
+  if (d.startsWith('/9j/')) {
+    return `data:image/jpeg;base64,${d}`
+  }
+  // PNG Base64 标准前缀
+  if (d.startsWith('iVBORw0KGgo')) {
+    return `data:image/png;base64,${d}`
+  }
+  // 无法识别的格式，拒绝渲染
+  return ''
 }
 
 function openDialog(type) {

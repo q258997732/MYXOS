@@ -63,7 +63,10 @@ public class MetricCollector implements Runnable {
             if (health.getCode() != null && health.getCode() == 200) {
                 status = DeviceStatus.ONLINE;
                 HostVerResp verResp = client.getHostVer(device.getIp());
-                version = verResp.getMsg();
+                version = verResp.getData();
+                if (version == null || version.isEmpty()) {
+                    version = verResp.getMsg();
+                }
                 MetricSnapshot snapshot = new MetricSnapshot();
                 snapshot.setDeviceId(device.getId());
                 snapshot.setMetricType(MetricType.VERSION.name());
