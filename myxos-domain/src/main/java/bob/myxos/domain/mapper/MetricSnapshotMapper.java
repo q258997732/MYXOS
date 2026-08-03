@@ -45,6 +45,20 @@ public interface MetricSnapshotMapper extends BaseMapper<MetricSnapshot> {
                                                      @Param("limit") Integer limit);
 
     /**
+     * 查询某设备每种指标类型的最新一条记录
+     *
+     * @param deviceId 设备 ID
+     * @return 最新指标快照列表
+     */
+    @Select("SELECT s.* FROM metric_snapshot s " +
+            "INNER JOIN (" +
+            "  SELECT metric_type, MAX(collected_at) AS max_collected_at " +
+            "  FROM metric_snapshot WHERE device_id = #{deviceId} AND deleted = 0 GROUP BY metric_type" +
+            ") latest ON s.metric_type = latest.metric_type AND s.collected_at = latest.max_collected_at " +
+            "WHERE s.device_id = #{deviceId} AND s.deleted = 0")
+    List<MetricSnapshot> selectLatestPerTypeByDevice(@Param("deviceId") Long deviceId);
+
+    /**
      * 批量删除截止时间之前的指标快照
      *
      * @param deadline 截止时间

@@ -26,26 +26,34 @@
           show-icon
         />
         <el-row :gutter="16" v-loading="androidLoading">
-          <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="name in androids" :key="name">
+          <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in androids" :key="item.name">
             <el-card class="android-card" shadow="hover">
               <template #header>
                 <div class="android-header">
                   <el-icon><Cellphone /></el-icon>
-                  <span class="android-name" :title="name">{{ name }}</span>
+                  <span class="android-name" :title="item.name">{{ item.name }}</span>
+                  <el-tag :type="androidStatusType(item.status)" size="small">{{ item.statusLabel }}</el-tag>
                 </div>
               </template>
-              <el-button size="small" type="primary" @click="selectInstance(name)">选择并操作</el-button>
+              <el-button size="small" type="primary" @click="selectInstance(item.name)">选择并操作</el-button>
             </el-card>
           </el-col>
         </el-row>
       </el-tab-pane>
 
       <el-tab-pane label="实时指标" name="metrics">
-        <el-table v-loading="metricsLoading" :data="metrics" size="small" stripe>
-          <el-table-column prop="metricType" label="指标类型" width="140" />
-          <el-table-column prop="metricValue" label="指标值" />
-          <el-table-column prop="collectedAt" label="采集时间" width="180" />
-        </el-table>
+        <div v-loading="metricsLoading">
+          <el-empty v-if="latestMetrics.length === 0" description="暂无采集指标" />
+          <el-row :gutter="16" v-else>
+            <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in latestMetrics" :key="item.metricType">
+              <el-card class="metric-card" shadow="hover" @click="openMetricHistory(item)">
+                <div class="metric-title">{{ metricLabel(item.metricType) }}</div>
+                <div class="metric-value">{{ formatMetricValue(item) }}</div>
+                <div class="metric-time">{{ item.collectedAt }}</div>
+              </el-card>
+            </el-col>
+          </el-row>
+        </div>
       </el-tab-pane>
 
       <el-tab-pane label="手动操作" name="ops">
@@ -61,7 +69,7 @@
           <el-form inline>
             <el-form-item label="容器名称">
               <el-select v-model="instanceName" placeholder="请选择容器" filterable style="width: 220px">
-                <el-option v-for="name in androids" :key="name" :label="name" :value="name" />
+                <el-option v-for="item in androids" :key="item.name" :label="item.name" :value="item.name" />
               </el-select>
             </el-form-item>
             <el-form-item label="新名称" v-if="showRename">
@@ -83,7 +91,7 @@
           <el-form inline>
             <el-form-item label="容器名称">
               <el-select v-model="instanceName" placeholder="请选择容器" filterable style="width: 220px">
-                <el-option v-for="name in androids" :key="name" :label="name" :value="name" />
+                <el-option v-for="item in androids" :key="item.name" :label="item.name" :value="item.name" />
               </el-select>
             </el-form-item>
           </el-form>
@@ -156,11 +164,29 @@
         </el-table>
       </el-tab-pane>
     </el-tabs>
+
+    <!-- 指标历史抽屉 -->
+    <el-drawer v-model="historyVisible" :title="historyTitle" size="600px">
+      <el-table v-loading="historyLoading" :data="historyRecords" size="small" stripe>
+        <el-table-column prop="metricValue" label="指标值" />
+        <el-table-column prop="collectedAt" label="采集时间" width="180" />
+      </el-table>
+      <div class="pagination-bar">
+        <el-pagination
+          v-model:current-page="historyQuery.page"
+          v-model:page-size="historyQuery.size"
+          :total="historyTotal"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          @change="loadMetricHistory"
+        />
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Cellphone } from '@element-plus/icons-vue'
@@ -172,13 +198,14 @@ const deviceId = route.params.id
 const activeTab = ref('info')
 const device = reactive({})
 const androids = reactive([])
-const metrics = reactive([])
+const latestMetrics = reactive([])
 const alarms = reactive([])
 const logs = reactive([])
 const tasks = reactive([])
 
 const androidLoading = ref(false)
 const metricsLoading = ref(false)
+const historyLoading = ref(false)
 
 const instanceName = ref('')
 const newInstanceName = ref('')
@@ -196,6 +223,26 @@ const dialogForm = reactive({
   language: '',
   command: ''
 })
+
+const historyVisible = ref(false)
+const historyTitle = ref('')
+const historyRecords = reactive([])
+const historyTotal = ref(0)
+const historyQuery = reactive({ page: 1, size: 20, metricType: '' })
+
+const METRIC_LABELS = {
+  CPU: 'CPU 使用率',
+  MEM: '内存使用率',
+  DISK: '磁盘使用率',
+  NET_RX: '网络接收',
+  NET_TX: '网络发送',
+  TEMP: '温度',
+  UPTIME: '运行时长',
+  VERSION: '版本号',
+  ANDROID_STATUS: '安卓实例状态'
+}
+
+let refreshTimer = null
 
 async function loadDevice() {
   const res = await deviceApi.detail(deviceId)
@@ -217,8 +264,8 @@ async function loadAndroids() {
 async function loadMetrics() {
   metricsLoading.value = true
   try {
-    const res = await deviceApi.metrics(deviceId, { page: 1, size: 50 })
-    metrics.splice(0, metrics.length, ...(res.data.records || []))
+    const res = await deviceApi.latestMetrics(deviceId)
+    latestMetrics.splice(0, latestMetrics.length, ...(res.data || []))
   } finally {
     metricsLoading.value = false
   }
@@ -237,6 +284,28 @@ async function loadLogs() {
 async function loadTasks() {
   const res = await deviceApi.tasks(deviceId, { page: 1, size: 20 })
   tasks.splice(0, tasks.length, ...res.data.records)
+}
+
+function metricLabel(type) {
+  return METRIC_LABELS[type] || type
+}
+
+function formatMetricValue(item) {
+  if (item.metricType === 'ANDROID_STATUS' && item.extra) {
+    try {
+      const extra = JSON.parse(item.extra)
+      return `${extra.name || '-'}: ${item.metricValue}`
+    } catch (e) {
+      return item.metricValue
+    }
+  }
+  return item.metricValue || '-'
+}
+
+function androidStatusType(status) {
+  if (status === 'RUNNING') return 'success'
+  if (status === 'STOPPED') return 'danger'
+  return 'info'
 }
 
 function selectInstance(name) {
@@ -336,6 +405,45 @@ async function confirmDialog() {
   dialogVisible.value = false
 }
 
+function openMetricHistory(item) {
+  historyQuery.metricType = item.metricType
+  historyTitle.value = `${metricLabel(item.metricType)} - 采集记录`
+  historyQuery.page = 1
+  historyVisible.value = true
+  loadMetricHistory()
+}
+
+async function loadMetricHistory() {
+  historyLoading.value = true
+  try {
+    const res = await deviceApi.metricHistory(deviceId, {
+      metricType: historyQuery.metricType,
+      page: historyQuery.page,
+      size: historyQuery.size
+    })
+    historyRecords.splice(0, historyRecords.length, ...(res.data.records || []))
+    historyTotal.value = res.data.total || 0
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+function startRefresh() {
+  if (refreshTimer) return
+  refreshTimer = setInterval(() => {
+    if (activeTab.value === 'metrics') {
+      loadMetrics()
+    }
+  }, 5000)
+}
+
+function stopRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+}
+
 onMounted(() => {
   loadDevice()
   loadAndroids()
@@ -343,6 +451,11 @@ onMounted(() => {
   loadAlarms()
   loadLogs()
   loadTasks()
+  startRefresh()
+})
+
+onUnmounted(() => {
+  stopRefresh()
 })
 </script>
 
@@ -368,5 +481,35 @@ onMounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
+}
+.metric-card {
+  margin-bottom: var(--spacing-md);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.metric-card:hover {
+  transform: translateY(-2px);
+}
+.metric-title {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.metric-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+.metric-time {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.pagination-bar {
+  margin-top: var(--spacing-md);
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

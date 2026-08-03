@@ -7,6 +7,7 @@ import bob.myxos.domain.entity.AlarmEvent;
 import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.MetricSnapshot;
 import bob.myxos.domain.entity.OpTask;
+import bob.myxos.main.dto.AndroidInstanceVO;
 import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceOpReq;
@@ -187,6 +188,35 @@ public class DeviceController {
     }
 
     /**
+     * 查询设备实时指标（每种类型最新一条）
+     *
+     * @param id 设备 ID
+     * @return 最新指标列表
+     */
+    @GetMapping("/{id}/metrics/latest")
+    public Result<List<MetricSnapshot>> latestMetrics(@PathVariable Long id) {
+        return Result.ok(deviceService.listLatestMetrics(id));
+    }
+
+    /**
+     * 分页查询指定类型的指标历史记录
+     *
+     * @param id         设备 ID
+     * @param metricType 指标类型
+     * @param page       当前页
+     * @param size       每页大小
+     * @return 指标快照分页结果
+     */
+    @GetMapping("/{id}/metrics/history")
+    public Result<PageResult<MetricSnapshot>> metricHistory(@PathVariable Long id,
+                                                                @RequestParam String metricType,
+                                                                @RequestParam(defaultValue = "1") Long page,
+                                                                @RequestParam(defaultValue = "20") Long size) {
+        Page<MetricSnapshot> p = deviceService.listMetricHistory(id, metricType, page, size);
+        return Result.ok(toPageResult(p));
+    }
+
+    /**
      * 分页查询设备告警事件
      *
      * @param id   设备 ID
@@ -235,13 +265,13 @@ public class DeviceController {
     }
 
     /**
-     * 查询设备上的安卓实例名称列表
+     * 查询设备上的安卓实例列表（含状态）
      *
      * @param id 设备 ID
-     * @return 安卓实例名称列表
+     * @return 安卓实例视图列表
      */
     @GetMapping("/{id}/androids")
-    public Result<List<String>> androids(@PathVariable Long id) {
+    public Result<List<AndroidInstanceVO>> androids(@PathVariable Long id) {
         return Result.ok(deviceService.listAndroidInstances(id));
     }
 

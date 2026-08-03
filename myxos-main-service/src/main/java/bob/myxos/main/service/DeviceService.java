@@ -5,6 +5,7 @@ import bob.myxos.domain.entity.AlarmEvent;
 import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.MetricSnapshot;
 import bob.myxos.domain.entity.OpTask;
+import bob.myxos.main.dto.AndroidInstanceVO;
 import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceUpdateReq;
@@ -120,12 +121,31 @@ public interface DeviceService {
     Page<ActionLog> listLogs(Long id, Long page, Long size);
 
     /**
-     * 查询设备上运行的安卓实例名称列表
+     * 查询设备上运行的安卓实例列表（包含状态）
      *
      * @param id 设备 ID
-     * @return 安卓实例名称列表
+     * @return 安卓实例视图列表
      */
-    List<String> listAndroidInstances(Long id);
+    List<AndroidInstanceVO> listAndroidInstances(Long id);
+
+    /**
+     * 查询设备实时指标（每种类型返回最新一条）
+     *
+     * @param id 设备 ID
+     * @return 最新指标快照列表
+     */
+    List<MetricSnapshot> listLatestMetrics(Long id);
+
+    /**
+     * 分页查询指定类型的指标历史记录
+     *
+     * @param id         设备 ID
+     * @param metricType 指标类型
+     * @param page       当前页
+     * @param size       每页大小
+     * @return 指标快照分页结果
+     */
+    Page<MetricSnapshot> listMetricHistory(Long id, String metricType, Long page, Long size);
 
     /**
      * 分页查询设备运维任务

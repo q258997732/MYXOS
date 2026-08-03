@@ -15,6 +15,7 @@ import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.domain.mapper.MetricSnapshotMapper;
 import bob.myxos.domain.mapper.OpTaskMapper;
 import bob.myxos.domain.mapper.ThresholdRuleMapper;
+import bob.myxos.main.dto.AndroidInstanceVO;
 import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceUpdateReq;
@@ -22,12 +23,14 @@ import bob.myxos.main.service.DeviceService;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
 import bob.myxos.mytos.dto.AndroidListResp;
+import bob.myxos.mytos.dto.BootStatusResp;
 import bob.myxos.mytos.dto.ScreenshotResp;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +46,7 @@ import java.util.stream.Collectors;
 /**
  * 设备业务实现
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DeviceServiceImpl implements DeviceService {
@@ -328,17 +332,85 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
-    public List<String> listAndroidInstances(Long id) {
+    public List<AndroidInstanceVO> listAndroidInstances(Long id) {
         Device device = getDetail(id);
-        MytosClient client = clientFactory.create(device.getIp(), device.getPort());
-        AndroidListResp resp = client.listAndroid(device.getIp());
-        if (resp == null) {
-            throw new BizException("获取安卓实例列表失败：设备无响应");
+        try {
+            MytosClient client = clientFactory.create(device.getIp(), device.getPort());
+            AndroidListResp resp = client.listAndroid(device.getIp());
+            if (resp == null) {
+                return Collections.emptyList();
+            }
+            if (resp.getCode() == null || resp.getCode() != 200) {
+                log.warn("获取安卓实例列表设备返回错误：deviceId={}, msg={}", id, resp.getMsg());
+                return Collections.emptyList();
+            }
+            List<String> names = parseAndroidNames(resp.getData());
+            return names.stream()
+                    .map(name -> buildAndroidInstanceVO(client, device.getIp(), name))
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.warn("获取安卓实例列表失败：deviceId={}", id, e);
+            return Collections.emptyList();
         }
-        if (resp.getCode() == null || resp.getCode() != 200) {
-            throw new BizException("获取安卓实例列表失败：" + (resp.getMsg() != null ? resp.getMsg() : "未知错误"));
+    }
+
+    private AndroidInstanceVO buildAndroidInstanceVO(MytosClient client, String ip, String name) {
+        AndroidInstanceVO vo = new AndroidInstanceVO();
+        vo.setName(name);
+        String status = fetchAndroidStatus(client, ip, name);
+        vo.setStatus(status);
+        vo.setStatusLabel(androidStatusLabel(status));
+        return vo;
+    }
+
+    private String fetchAndroidStatus(MytosClient client, String ip, String name) {
+        try {
+            BootStatusResp resp = client.getAndroidBootStatus(ip, name);
+            if (resp == null || resp.getCode() == null || resp.getCode() != 200 || resp.getData() == null) {
+                return "UNKNOWN";
+            }
+            String raw = resp.getData().isTextual() ? resp.getData().asText().trim().toLowerCase()
+                    : resp.getData().toString().toLowerCase();
+            if (raw.contains("run") || raw.contains("booted") || raw.contains("online")) {
+                return "RUNNING";
+            }
+            if (raw.contains("stop") || raw.contains("offline") || raw.contains("down")) {
+                return "STOPPED";
+            }
+            return "UNKNOWN";
+        } catch (Exception e) {
+            return "UNKNOWN";
         }
-        return parseAndroidNames(resp.getData());
+    }
+
+    private String androidStatusLabel(String status) {
+        if ("RUNNING".equals(status)) {
+            return "运行中";
+        }
+        if ("STOPPED".equals(status)) {
+            return "已停止";
+        }
+        return "未知";
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MetricSnapshot> listLatestMetrics(Long id) {
+        getDetail(id);
+        List<MetricSnapshot> snapshots = metricSnapshotMapper.selectLatestPerTypeByDevice(id);
+        return snapshots == null ? Collections.emptyList() : snapshots;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<MetricSnapshot> listMetricHistory(Long id, String metricType, Long page, Long size) {
+        getDetail(id);
+        LambdaQueryWrapper<MetricSnapshot> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(MetricSnapshot::getDeviceId, id);
+        wrapper.eq(MetricSnapshot::getMetricType, metricType);
+        wrapper.eq(MetricSnapshot::getDeleted, 0);
+        wrapper.orderByDesc(MetricSnapshot::getCollectedAt);
+        return metricSnapshotMapper.selectPage(new Page<>(page, size), wrapper);
     }
 
     /**

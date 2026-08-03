@@ -10,6 +10,7 @@ import bob.myxos.domain.mapper.DiscoverTaskMapper;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
 import bob.myxos.mytos.dto.HealthResp;
+import bob.myxos.collector.service.MetricPersistService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +46,7 @@ public class DeviceDiscoveryScanner {
     private final MytosClientFactory clientFactory;
     private final DeviceMapper deviceMapper;
     private final DiscoverTaskMapper discoverTaskMapper;
+    private final MetricPersistService metricPersistService;
 
     /**
      * 执行扫描任务
@@ -188,8 +190,23 @@ public class DeviceDiscoveryScanner {
         try {
             deviceMapper.insert(device);
             log.info("发现新设备：{}:{}, name={}", ip, port, name);
+            collectImmediately(device);
         } catch (DuplicateKeyException e) {
             log.debug("设备已存在，跳过：{}:{}", ip, port);
+        }
+    }
+
+    /**
+     * 发现设备后立即执行一次指标采集，让用户能尽快在详情页看到数据
+     */
+    private void collectImmediately(Device device) {
+        try {
+            MetricCollector collector = new MetricCollector(device, clientFactory,
+                    snapshots -> metricPersistService.saveBatchSnapshots(snapshots), deviceMapper);
+            collector.run();
+            log.info("发现设备立即采集完成：{}:{}", device.getIp(), device.getPort());
+        } catch (Exception e) {
+            log.warn("发现设备立即采集失败：{}:{}", device.getIp(), device.getPort(), e);
         }
     }
 }

@@ -20,6 +20,8 @@ public enum MetricType {
     UPTIME,
     /** 版本号 */
     VERSION,
+    /** 安卓实例状态 */
+    ANDROID_STATUS,
     /** 自定义指标 */
     CUSTOM
 }
