@@ -15,7 +15,11 @@ export const deviceApi = {
   collect: (id) => request.post(`/devices/${id}/collect`),
   ops: (id, data) => request.post(`/devices/${id}/ops`, data),
   screenshot: (id, params) => request.get(`/devices/${id}/screenshot`, { params }),
-  shell: (id, data) => request.post(`/devices/${id}/shell`, data.command, { params: { name: data.name } }),
+  // shell 命令以 JSON body 提交（裸字符串 body 会被当作表单解析，触发 Spring Security 防火墙拦截）
+  // 命令可能耗时较长（如 pm list packages），超时放宽到 65 秒
+  shell: (id, data) => request.post(`/devices/${id}/shell`,
+    { name: data.name, command: (data.command || '').trim() },
+    { timeout: 65000 }),
   clipboardGet: (id, params) => request.get(`/devices/${id}/clipboard`, { params }),
   androids: (id) => request.get(`/devices/${id}/androids`),
   latestMetrics: (id) => request.get(`/devices/${id}/metrics/latest`),

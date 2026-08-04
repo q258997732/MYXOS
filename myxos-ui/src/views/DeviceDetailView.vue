@@ -230,7 +230,9 @@
       </el-form>
       <el-form v-if="dialogType === 'shell'">
         <el-form-item label="Adb 命令">
-          <el-input v-model="dialogForm.command" type="textarea" :rows="3" placeholder="例如：pm list packages" />
+          <el-input v-model="dialogForm.command" type="textarea" :rows="3"
+            placeholder="输入容器内 shell 命令，例如：pm list packages、getprop ro.build.version.release、dumpsys battery" />
+          <div class="shell-tip">命令在容器内 shell 直接执行，无需 adb 前缀；常用示例：pm list packages（列出应用）、input keyevent 3（返回桌面）、settings list system（系统设置）</div>
         </el-form-item>
         <el-form-item v-if="dialogResult" label="执行结果">
           <pre class="shell-result">{{ dialogResult }}</pre>
@@ -796,6 +798,12 @@ onUnmounted(() => {
   word-break: break-all;
   font-family: 'Courier New', monospace;
   font-size: 13px;
+}
+.shell-tip {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 .android-card {
   margin-bottom: var(--spacing-md);

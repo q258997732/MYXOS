@@ -12,6 +12,7 @@ import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceOpReq;
 import bob.myxos.main.dto.DeviceUpdateReq;
+import bob.myxos.main.dto.ShellReq;
 import bob.myxos.main.service.DeviceService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -283,14 +284,17 @@ public class DeviceController {
      * @param command shell 命令
      * @return 命令执行输出
      */
+    /**
+     * 同步执行 Adb 命令（请求体为 JSON：{"name":"容器名","command":"shell 命令"}）
+     *
+     * @param id  设备 ID
+     * @param req shell 请求（容器名称 + 命令）
+     * @return 命令执行输出
+     */
     @PostMapping("/{id}/shell")
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
-    public Result<String> shell(@PathVariable Long id,
-                                   @RequestParam @NotBlank(message = "容器名称不能为空")
-                                   @Pattern(regexp = "^[A-Za-z0-9_.-]{1,64}$", message = "容器名称包含非法字符")
-                                   String name,
-                                   @RequestBody @NotBlank(message = "命令不能为空") String command) {
-        return Result.ok(deviceService.executeShell(id, name, command));
+    public Result<String> shell(@PathVariable Long id, @RequestBody @Valid ShellReq req) {
+        return Result.ok(deviceService.executeShell(id, req.getName(), req.getCommand().trim()));
     }
 
     /**

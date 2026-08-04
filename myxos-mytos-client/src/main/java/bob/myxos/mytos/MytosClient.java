@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
@@ -27,6 +28,9 @@ public class MytosClient {
 
     /** Shell 命令最大长度 */
     private static final int SHELL_COMMAND_MAX_LENGTH = 500;
+
+    /** Shell 命令读取超时时间（秒）：部分命令（如 pm list packages）执行较慢，单独放宽 */
+    private static final int SHELL_READ_TIMEOUT_SEC = 60;
 
     /** IP 地址格式校验（IPv4 / IPv6，仅用于防止路径注入） */
     private static final Pattern IP_PATTERN = Pattern.compile(
@@ -305,8 +309,18 @@ public class MytosClient {
         } catch (Exception e) {
             throw new MytosException("shell 命令序列化失败: " + e.getMessage(), e);
         }
-        return doPostBody("/and_api/v1/shell/" + ip + "/" + name, body,
+        return doPostBody(shellHttpClient(), "/and_api/v1/shell/" + ip + "/" + name, body,
                 MediaType.parse("application/json; charset=utf-8"), ShellResp.class);
+    }
+
+    /**
+     * 构建放宽读超时的 OkHttp 客户端（共享连接池与调度器）
+     * 用于执行耗时较长的 shell 命令，避免默认 10 秒读超时导致失败
+     */
+    private OkHttpClient shellHttpClient() {
+        return httpClient.newBuilder()
+                .readTimeout(SHELL_READ_TIMEOUT_SEC, TimeUnit.SECONDS)
+                .build();
     }
 
     /**
@@ -473,6 +487,11 @@ public class MytosClient {
     }
 
     private <T extends MytosBaseResp> T doPostBody(String path, String body, MediaType mediaType, Class<T> respClass) {
+        return doPostBody(httpClient, path, body, mediaType, respClass);
+    }
+
+    private <T extends MytosBaseResp> T doPostBody(OkHttpClient client, String path, String body,
+                                                   MediaType mediaType, Class<T> respClass) {
         HttpUrl url = HttpUrl.parse(baseUrl + path);
         if (url == null) {
             throw new MytosException("非法的请求地址: " + baseUrl + path);
@@ -481,11 +500,15 @@ public class MytosClient {
                 .url(url)
                 .post(RequestBody.create(body, mediaType))
                 .build();
-        return execute(request, respClass);
+        return execute(client, request, respClass);
     }
 
     private <T extends MytosBaseResp> T execute(Request request, Class<T> respClass) {
-        try (Response response = httpClient.newCall(request).execute()) {
+        return execute(httpClient, request, respClass);
+    }
+
+    private <T extends MytosBaseResp> T execute(OkHttpClient client, Request request, Class<T> respClass) {
+        try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new MytosException(response.code(),
                         "设备 HTTP 调用失败，状态码: " + response.code());

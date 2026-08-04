@@ -149,4 +149,31 @@ class DeviceControllerIntegrationTest {
         mockMvc.perform(delete("/api/devices/1"))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    @WithMockUser(username = "admin", roles = "ADMIN")
+    @DisplayName("执行 Adb 命令应以 JSON body 提交并返回输出")
+    void shellWithJsonBodyReturnsOutput() throws Exception {
+        // Arrange
+        when(deviceService.executeShell(anyLong(), any(String.class), any(String.class)))
+                .thenReturn("package:com.example.app");
+
+        // Act & Assert：含空格的命令放在 JSON 字段中，不会被防火墙当作表单参数名拦截
+        mockMvc.perform(post("/api/devices/1/shell")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"c1\",\"command\":\"pm list packages\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(Result.SUCCESS_CODE))
+                .andExpect(jsonPath("$.data").value("package:com.example.app"));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = "ADMIN")
+    @DisplayName("执行 Adb 命令缺少命令字段应返回 400")
+    void shellWithoutCommandReturnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/devices/1/shell")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"c1\"}"))
+                .andExpect(status().isBadRequest());
+    }
 }
