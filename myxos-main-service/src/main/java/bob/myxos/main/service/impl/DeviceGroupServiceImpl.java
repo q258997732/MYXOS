@@ -40,6 +40,15 @@ public class DeviceGroupServiceImpl implements DeviceGroupService {
     @Transactional(rollbackFor = Exception.class)
     public DeviceGroup createGroup(String name, Long parentId, String remark) {
         Long realParentId = parentId == null ? 0L : parentId;
+        // 新增：同一父节点下名称不能重复
+        Long count = deviceGroupMapper.selectCount(
+                new LambdaQueryWrapper<DeviceGroup>()
+                        .eq(DeviceGroup::getName, name)
+                        .eq(DeviceGroup::getParentId, realParentId)
+                        .eq(DeviceGroup::getDeleted, 0));
+        if (count != null && count > 0) {
+            throw new BizException("分组名称已存在");
+        }
         validateParentGroup(realParentId, null);
         DeviceGroup group = new DeviceGroup();
         group.setName(name);
