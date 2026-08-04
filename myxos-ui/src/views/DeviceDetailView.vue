@@ -43,13 +43,26 @@
 
       <el-tab-pane label="实时指标" name="metrics">
         <div v-loading="metricsLoading">
-          <el-empty v-if="latestMetrics.length === 0" description="暂无采集指标" />
+          <h4 class="metric-section-title">主机指标</h4>
+          <el-empty v-if="hostMetrics.length === 0" description="暂无主机指标" />
           <el-row :gutter="16" v-else>
-            <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in latestMetrics" :key="item.metricType">
+            <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in hostMetrics" :key="item.metricType">
               <el-card class="metric-card" shadow="hover" @click="openMetricHistory(item)">
                 <div class="metric-title">{{ metricLabel(item.metricType) }}</div>
                 <div class="metric-value">{{ formatMetricValue(item) }}</div>
-                <div class="metric-time">{{ item.collectedAt }}</div>
+                <div class="metric-time">{{ formatDateTime(item.collectedAt) }}</div>
+              </el-card>
+            </el-col>
+          </el-row>
+
+          <h4 class="metric-section-title">安卓实例状态</h4>
+          <el-empty v-if="androidMetrics.length === 0" description="暂无安卓实例状态" />
+          <el-row :gutter="16" v-else>
+            <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in androidMetrics" :key="item.metricType + item.extra">
+              <el-card class="metric-card" shadow="hover" @click="openMetricHistory(item)">
+                <div class="metric-title">{{ androidMetricTitle(item) }}</div>
+                <div class="metric-value">{{ formatMetricValue(item) }}</div>
+                <div class="metric-time">{{ formatDateTime(item.collectedAt) }}</div>
               </el-card>
             </el-col>
           </el-row>
@@ -192,6 +205,7 @@ import { ElMessage } from 'element-plus'
 import { Cellphone } from '@element-plus/icons-vue'
 import { deviceApi } from '@/api'
 import DeviceStatusTag from '@/components/DeviceStatusTag.vue'
+import { formatDateTime } from '@/utils/date'
 
 const route = useRoute()
 const deviceId = route.params.id
@@ -284,6 +298,18 @@ async function loadLogs() {
 async function loadTasks() {
   const res = await deviceApi.tasks(deviceId, { page: 1, size: 20 })
   tasks.splice(0, tasks.length, ...res.data.records)
+}
+
+const hostMetrics = computed(() => latestMetrics.filter(m => m.metricType !== 'ANDROID_STATUS'))
+const androidMetrics = computed(() => latestMetrics.filter(m => m.metricType === 'ANDROID_STATUS'))
+
+function androidMetricTitle(item) {
+  try {
+    const extra = JSON.parse(item.extra)
+    return (extra.name || '未知容器') + ' 状态'
+  } catch (e) {
+    return '安卓实例状态'
+  }
 }
 
 function metricLabel(type) {
@@ -495,13 +521,6 @@ onUnmounted(() => {
   font-size: 13px;
   color: var(--text-secondary);
   margin-bottom: 8px;
-}
-.metric-value {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-  word-break: break-all;
 }
 .metric-time {
   font-size: 12px;

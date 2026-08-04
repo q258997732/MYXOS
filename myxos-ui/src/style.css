@@ -61,3 +61,19 @@ body {
 .mt-16 {
   margin-top: var(--spacing-md);
 }
+
+.metric-value {
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  word-break: break-all;
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
+}
+
+.metric-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 16px 0 12px;
+  color: var(--text-primary);
+}
