@@ -1,55 +1,106 @@
-version: "3.8"
-
 services:
   mysql:
-    image: mysql:8.0
+    image: mysql:8.0.39
     container_name: myxos-mysql
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请设置 MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: myxos
+      MYSQL_USER: ${MYSQL_USER:-myxos}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请设置 MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-time-zone=+08:00
     volumes:
       - myxos-mysql-data:/var/lib/mysql
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      # 仅绑定到 127.0.0.1，避免直接暴露到公网；生产环境建议直接删除 ports
+      - "127.0.0.1:3306:3306"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "MYSQL_PWD=$${MYSQL_ROOT_PASSWORD} mysqladmin ping -u root --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - myxos-network
 
-  main-service:
+  myxos-main-service:
     build:
       context: .
       dockerfile: Dockerfile.main-service
+    image: myxos-main-service:1.0.0-SNAPSHOT
     container_name: myxos-main-service
+    restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy
-    ports:
-      - "8080:8080"
     environment:
       MYSQL_HOST: mysql
-      MYSQL_USER: root
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
-      MYXOS_JWT_SECRET: ${MYXOS_JWT_SECRET:?MYXOS_JWT_SECRET must be set}
-      MYXOS_INTERNAL_TOKEN: ${MYXOS_INTERNAL_TOKEN:?MYXOS_INTERNAL_TOKEN must be set}
+      MYSQL_USER: ${MYSQL_USER:-myxos}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYXOS_JWT_SECRET: ${MYXOS_JWT_SECRET:?请设置 MYXOS_JWT_SECRET}
+      MYXOS_INTERNAL_TOKEN: ${MYXOS_INTERNAL_TOKEN:?请设置 MYXOS_INTERNAL_TOKEN}
+      TZ: Asia/Shanghai
+    ports:
+      # 生产环境建议仅绑定到 127.0.0.1，由 Nginx 统一对外暴露；本地调试可临时改为 "8080:8080"
+      - "127.0.0.1:8080:8080"
+    networks:
+      - myxos-network
+    healthcheck:
+      # 使用前端入口页 /index.html 作为简单探活，校验 HTTP 200；建议后续引入 actuator 后替换为 /actuator/health
+      test: ["CMD-SHELL", "wget --spider -q -S http://localhost:8080/index.html 2>&1 | grep -q 'HTTP/.* 200'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
-  collector-service:
+  myxos-collector-service:
     build:
       context: .
       dockerfile: Dockerfile.collector-service
+    image: myxos-collector-service:1.0.0-SNAPSHOT
     container_name: myxos-collector-service
+    restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy
-      main-service:
-        condition: service_started
-    ports:
-      - "8081:8081"
     environment:
       MYSQL_HOST: mysql
-      MYSQL_USER: root
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
-      MYXOS_INTERNAL_TOKEN: ${MYXOS_INTERNAL_TOKEN:?MYXOS_INTERNAL_TOKEN must be set}
+      MYSQL_USER: ${MYSQL_USER:-myxos}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYXOS_INTERNAL_TOKEN: ${MYXOS_INTERNAL_TOKEN:?请设置 MYXOS_INTERNAL_TOKEN}
+      TZ: Asia/Shanghai
+    # 采集服务仅与主服务内部通信，默认不暴露到宿主机
+    # 如需本机调试，可取消下面注释并绑定到 127.0.0.1
+    # ports:
+    #   - "127.0.0.1:8081:8081"
+    networks:
+      - myxos-network
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: myxos-nginx
+    restart: unless-stopped
+    depends_on:
+      myxos-main-service:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      # 如需 HTTPS，请准备证书后取消下面注释
+      # - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # 如需 HTTPS，请将证书放在 ./ssl/ 目录
+      # - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - myxos-network
 
 volumes:
   myxos-mysql-data:
+
+networks:
+  myxos-network:
+    driver: bridge
