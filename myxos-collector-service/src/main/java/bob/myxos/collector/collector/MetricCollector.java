@@ -2,6 +2,7 @@ package bob.myxos.collector.collector;
 
 import bob.myxos.common.enums.DeviceStatus;
 import bob.myxos.common.enums.MetricType;
+import bob.myxos.common.util.AndroidStatusParser;
 import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.MetricSnapshot;
 import bob.myxos.domain.mapper.DeviceMapper;
@@ -150,20 +151,13 @@ public class MetricCollector implements Runnable {
         try {
             BootStatusResp resp = client.getAndroidBootStatus(ip, name);
             if (resp == null || resp.getData() == null) {
-                return "UNKNOWN";
+                return AndroidStatusParser.UNKNOWN;
             }
-            String raw = resp.getData().isTextual() ? resp.getData().asText().trim().toLowerCase()
-                    : resp.getData().toString().toLowerCase();
-            if (raw.contains("run") || raw.contains("booted") || raw.contains("online")) {
-                return "RUNNING";
-            }
-            if (raw.contains("stop") || raw.contains("offline") || raw.contains("down")) {
-                return "STOPPED";
-            }
-            return "UNKNOWN";
+            String raw = resp.getData().isTextual() ? resp.getData().asText() : resp.getData().toString();
+            return AndroidStatusParser.parse(raw);
         } catch (Exception e) {
             log.debug("获取安卓实例状态失败：{}/{}", ip, name, e);
-            return "UNKNOWN";
+            return AndroidStatusParser.UNKNOWN;
         }
     }
 

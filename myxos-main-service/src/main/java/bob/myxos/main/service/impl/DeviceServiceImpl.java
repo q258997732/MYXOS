@@ -2,6 +2,7 @@ package bob.myxos.main.service.impl;
 
 import bob.myxos.common.enums.DeviceStatus;
 import bob.myxos.common.exception.BizException;
+import bob.myxos.common.util.AndroidStatusParser;
 import bob.myxos.domain.entity.ActionLog;
 import bob.myxos.domain.entity.AlarmEvent;
 import bob.myxos.domain.entity.Device;
@@ -404,39 +405,38 @@ public class DeviceServiceImpl implements DeviceService {
 
     private String fetchAndroidStatus(MytosClient client, String ip, String name, AndroidDetail detail) {
         if (detail != null && detail.getStatus() != null) {
-            String s = detail.getStatus().trim().toLowerCase();
-            if (s.contains("run") || s.contains("booted") || s.contains("online") || s.equals("true")) {
-                return "RUNNING";
-            }
-            if (s.contains("stop") || s.contains("offline") || s.contains("down") || s.equals("false")) {
-                return "STOPPED";
+            String status = AndroidStatusParser.parse(detail.getStatus());
+            if (!AndroidStatusParser.UNKNOWN.equals(status)) {
+                return status;
             }
         }
         try {
             BootStatusResp resp = client.getAndroidBootStatus(ip, name);
             if (resp == null || resp.getCode() == null || resp.getCode() != 200 || resp.getData() == null) {
-                return "UNKNOWN";
+                return AndroidStatusParser.UNKNOWN;
             }
-            String raw = resp.getData().isTextual() ? resp.getData().asText().trim().toLowerCase()
-                    : resp.getData().toString().toLowerCase();
-            if (raw.contains("run") || raw.contains("booted") || raw.contains("online")) {
-                return "RUNNING";
-            }
-            if (raw.contains("stop") || raw.contains("offline") || raw.contains("down")) {
-                return "STOPPED";
-            }
-            return "UNKNOWN";
+            String raw = resp.getData().isTextual() ? resp.getData().asText() : resp.getData().toString();
+            return AndroidStatusParser.parse(raw);
         } catch (Exception e) {
-            return "UNKNOWN";
+            return AndroidStatusParser.UNKNOWN;
         }
     }
 
     private String buildStatusDetail(AndroidDetail detail) {
-        if (detail == null) return null;
+        if (detail == null) {
+            return null;
+        }
         List<String> parts = new ArrayList<>();
-        if (detail.getIp() != null) parts.add("IP: " + detail.getIp());
-        if (detail.getImage() != null) parts.add("镜像: " + detail.getImage());
-        if (detail.getStatus() != null) parts.add("原始状态: " + detail.getStatus());
+        // 始终保留原始状态字段，即使解析为 UNKNOWN 也便于排查
+        if (detail.getStatus() != null) {
+            parts.add("原始状态: " + detail.getStatus());
+        }
+        if (detail.getIp() != null) {
+            parts.add("IP: " + detail.getIp());
+        }
+        if (detail.getImage() != null) {
+            parts.add("镜像: " + detail.getImage());
+        }
         return parts.isEmpty() ? null : String.join(" | ", parts);
     }
 
@@ -448,11 +448,14 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     private String androidStatusLabel(String status) {
-        if ("RUNNING".equals(status)) {
+        if (AndroidStatusParser.RUNNING.equals(status)) {
             return "运行中";
         }
-        if ("STOPPED".equals(status)) {
+        if (AndroidStatusParser.STOPPED.equals(status)) {
             return "已停止";
+        }
+        if (AndroidStatusParser.TRANSITION.equals(status)) {
+            return "过渡中";
         }
         return "未知";
     }
