@@ -18,4 +18,19 @@ public interface OpTaskService {
      * @return 分页结果
      */
     Page<OpTask> list(String status, String source, Long page, Long size);
+
+    /**
+     * 根据 ID 查询操作任务
+     *
+     * @param id 任务 ID
+     * @return 操作任务
+     */
+    OpTask getById(Long id);
+
+    /**
+     * 重试操作任务
+     *
+     * @param id 任务 ID
+     */
+    void retry(Long id);
 }

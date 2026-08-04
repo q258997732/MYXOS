@@ -48,6 +48,7 @@ export const logApi = {
 
 export const opTaskApi = {
   list: (params) => request.get('/op-tasks', { params }),
+  detail: (id) => request.get(`/op-tasks/${id}`),
   retry: (id) => request.post(`/op-tasks/${id}/retry`)
 }
 

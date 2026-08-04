@@ -6,7 +6,10 @@ import bob.myxos.domain.entity.OpTask;
 import bob.myxos.main.service.OpTaskService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -44,5 +47,29 @@ public class OpTaskController {
         result.setSize(p.getSize());
         result.setRecords(p.getRecords());
         return Result.ok(result);
+    }
+
+    /**
+     * 查询操作任务详情
+     *
+     * @param id 任务 ID
+     * @return 任务详情
+     */
+    @GetMapping("/{id}")
+    public Result<OpTask> detail(@PathVariable Long id) {
+        return Result.ok(opTaskService.getById(id));
+    }
+
+    /**
+     * 重试操作任务
+     *
+     * @param id 任务 ID
+     * @return 空结果
+     */
+    @PostMapping("/{id}/retry")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public Result<Void> retry(@PathVariable Long id) {
+        opTaskService.retry(id);
+        return Result.ok();
     }
 }
