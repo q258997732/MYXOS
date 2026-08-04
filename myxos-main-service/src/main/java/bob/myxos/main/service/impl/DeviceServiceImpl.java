@@ -23,12 +23,16 @@ import bob.myxos.main.service.DeviceService;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
 import bob.myxos.mytos.dto.AndroidListResp;
+import bob.myxos.mytos.dto.AndroidDetailResp;
 import bob.myxos.mytos.dto.BootStatusResp;
+import bob.myxos.mytos.dto.ClipboardResp;
 import bob.myxos.mytos.dto.ScreenshotResp;
+import bob.myxos.mytos.dto.ShellResp;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -367,13 +371,47 @@ public class DeviceServiceImpl implements DeviceService {
     private AndroidInstanceVO buildAndroidInstanceVO(MytosClient client, String ip, String name) {
         AndroidInstanceVO vo = new AndroidInstanceVO();
         vo.setName(name);
-        String status = fetchAndroidStatus(client, ip, name);
+        vo.setIp(ip);
+
+        AndroidDetail detail = fetchAndroidDetail(client, ip, name);
+        if (detail != null) {
+            vo.setImage(detail.getImage());
+        }
+
+        String status = fetchAndroidStatus(client, ip, name, detail);
         vo.setStatus(status);
         vo.setStatusLabel(androidStatusLabel(status));
+        vo.setStatusDetail(buildStatusDetail(detail));
         return vo;
     }
 
-    private String fetchAndroidStatus(MytosClient client, String ip, String name) {
+    private AndroidDetail fetchAndroidDetail(MytosClient client, String ip, String name) {
+        try {
+            AndroidDetailResp resp = client.getAndroidDetail(ip, name);
+            if (resp != null && resp.getCode() != null && resp.getCode() == 200 && resp.getData() != null) {
+                AndroidDetail detail = new AndroidDetail();
+                JsonNode data = resp.getData();
+                if (data.has("image")) detail.setImage(data.get("image").asText(null));
+                if (data.has("status")) detail.setStatus(data.get("status").asText(null));
+                if (data.has("ip")) detail.setIp(data.get("ip").asText(null));
+                return detail;
+            }
+        } catch (Exception e) {
+            log.debug("获取安卓实例详情失败：{} {}", ip, name, e);
+        }
+        return null;
+    }
+
+    private String fetchAndroidStatus(MytosClient client, String ip, String name, AndroidDetail detail) {
+        if (detail != null && detail.getStatus() != null) {
+            String s = detail.getStatus().trim().toLowerCase();
+            if (s.contains("run") || s.contains("booted") || s.contains("online") || s.equals("true")) {
+                return "RUNNING";
+            }
+            if (s.contains("stop") || s.contains("offline") || s.contains("down") || s.equals("false")) {
+                return "STOPPED";
+            }
+        }
         try {
             BootStatusResp resp = client.getAndroidBootStatus(ip, name);
             if (resp == null || resp.getCode() == null || resp.getCode() != 200 || resp.getData() == null) {
@@ -391,6 +429,22 @@ public class DeviceServiceImpl implements DeviceService {
         } catch (Exception e) {
             return "UNKNOWN";
         }
+    }
+
+    private String buildStatusDetail(AndroidDetail detail) {
+        if (detail == null) return null;
+        List<String> parts = new ArrayList<>();
+        if (detail.getIp() != null) parts.add("IP: " + detail.getIp());
+        if (detail.getImage() != null) parts.add("镜像: " + detail.getImage());
+        if (detail.getStatus() != null) parts.add("原始状态: " + detail.getStatus());
+        return parts.isEmpty() ? null : String.join(" | ", parts);
+    }
+
+    @Data
+    private static class AndroidDetail {
+        private String status;
+        private String ip;
+        private String image;
     }
 
     private String androidStatusLabel(String status) {

@@ -18,4 +18,13 @@ public class AndroidInstanceVO {
 
     /** 状态中文标签 */
     private String statusLabel;
+
+    /** 状态详细信息 */
+    private String statusDetail;
+
+    /** 容器 IP */
+    private String ip;
+
+    /** 镜像名称 */
+    private String image;
 }
