@@ -27,6 +27,14 @@ public interface DiscoverService {
     Page<DiscoverTask> list(Long page, Long size);
 
     /**
+     * 获取发现任务详情
+     *
+     * @param id 任务 ID
+     * @return 发现任务
+     */
+    DiscoverTask getTaskDetail(Long id);
+
+    /**
      * 删除指定发现任务（逻辑删除）
      *
      * @param id 任务 ID

@@ -55,6 +55,7 @@ export const opTaskApi = {
 export const discoverApi = {
   scan: (data) => request.post('/discover/scan', data),
   tasks: (params) => request.get('/discover/tasks', { params }),
+  taskDetail: (id) => request.get(`/discover/tasks/${id}`),
   deleteTask: (id) => request.delete(`/discover/tasks/${id}`),
   clearTasks: () => request.delete('/discover/tasks')
 }

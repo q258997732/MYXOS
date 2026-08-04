@@ -51,6 +51,9 @@ public class DiscoverTask {
     /** 任务消息 */
     private String message;
 
+    /** 逐 IP 发现结果 JSON */
+    private String detail;
+
     /** 创建人 */
     @TableField(fill = FieldFill.INSERT)
     private String whoCreated;

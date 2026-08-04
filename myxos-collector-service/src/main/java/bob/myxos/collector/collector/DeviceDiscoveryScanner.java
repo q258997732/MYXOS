@@ -3,21 +3,25 @@ package bob.myxos.collector.collector;
 import bob.myxos.common.enums.DeviceMode;
 import bob.myxos.common.enums.DeviceStatus;
 import bob.myxos.common.util.IpUtils;
+import bob.myxos.domain.entity.ActionLog;
 import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.DiscoverTask;
+import bob.myxos.domain.mapper.ActionLogMapper;
 import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.domain.mapper.DiscoverTaskMapper;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
 import bob.myxos.mytos.dto.HealthResp;
 import bob.myxos.collector.service.MetricPersistService;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -47,6 +51,8 @@ public class DeviceDiscoveryScanner {
     private final DeviceMapper deviceMapper;
     private final DiscoverTaskMapper discoverTaskMapper;
     private final MetricPersistService metricPersistService;
+    private final ObjectMapper objectMapper;
+    private final ActionLogMapper actionLogMapper;
 
     /**
      * 执行扫描任务
@@ -75,7 +81,9 @@ public class DeviceDiscoveryScanner {
         markRunning(task);
 
         ExecutorService executor = Executors.newFixedThreadPool(SCAN_THREADS);
+        List<DiscoveryIpResult> ipResults = Collections.synchronizedList(new ArrayList<>());
         AtomicInteger found = new AtomicInteger(0);
+        AtomicInteger duplicate = new AtomicInteger(0);
         AtomicInteger scanned = new AtomicInteger(0);
         CountDownLatch latch = new CountDownLatch(total);
 
@@ -92,11 +100,19 @@ public class DeviceDiscoveryScanner {
                         MytosClient client = clientFactory.create(ip, p);
                         HealthResp resp = client.healthcheck(ip);
                         if (resp.getCode() != null && resp.getCode() == 200) {
-                            saveDiscoveredDevice(ip, p, resp);
-                            found.incrementAndGet();
+                            SaveResult saveResult = saveDiscoveredDevice(ip, p, resp);
+                            if (saveResult.added) {
+                                found.incrementAndGet();
+                                ipResults.add(new DiscoveryIpResult(ip, p, "ADDED", null));
+                            } else {
+                                duplicate.incrementAndGet();
+                                ipResults.add(new DiscoveryIpResult(ip, p, "DUPLICATE", saveResult.reason));
+                            }
+                        } else {
+                            ipResults.add(new DiscoveryIpResult(ip, p, "IGNORED", "健康检查未通过"));
                         }
                     } catch (Exception e) {
-                        log.debug("探测失败：{}:{}, 原因：{}", ip, p, e.toString());
+                        ipResults.add(new DiscoveryIpResult(ip, p, "ERROR", e.getMessage()));
                     } finally {
                         scanned.incrementAndGet();
                         latch.countDown();
@@ -127,7 +143,7 @@ public class DeviceDiscoveryScanner {
             }
         }
 
-        markDone(taskId, found.get(), scanned.get(), total, completed);
+        markDone(taskId, found.get(), duplicate.get(), scanned.get(), total, completed, ipResults);
     }
 
     private void markRunning(DiscoverTask task) {
@@ -148,18 +164,29 @@ public class DeviceDiscoveryScanner {
         }
     }
 
-    private void markDone(Long taskId, int foundCount, int scannedCount, int total, boolean completed) {
+    private void markDone(Long taskId, int foundCount, int duplicateCount, int scannedCount, int total,
+                          boolean completed, List<DiscoveryIpResult> ipResults) {
         DiscoverTask update = new DiscoverTask();
         update.setId(taskId);
         update.setFinishedAt(LocalDateTime.now());
         update.setFoundCount(foundCount);
         update.setScannedIpCount(scannedCount);
+        try {
+            DiscoverTaskDetail detail = new DiscoverTaskDetail();
+            detail.setAddedCount(foundCount);
+            detail.setDuplicateCount(duplicateCount);
+            detail.setFailedCount(Math.max(0, total - scannedCount));
+            detail.setIpResults(ipResults);
+            update.setDetail(objectMapper.writeValueAsString(detail));
+        } catch (Exception e) {
+            log.warn("序列化发现详情失败：taskId={}", taskId, e);
+        }
         if (completed) {
             update.setStatus("DONE");
-            update.setMessage("扫描完成，发现设备：" + foundCount);
+            update.setMessage("扫描完成，新增 " + foundCount + " 台，重复 " + duplicateCount + " 台");
         } else {
             update.setStatus("TIMEOUT");
-            update.setMessage(String.format("扫描超时，已扫描 %d / %d，发现设备：%d", scannedCount, total, foundCount));
+            update.setMessage(String.format("扫描超时，已扫描 %d / %d，新增 %d 台", scannedCount, total, foundCount));
         }
         discoverTaskMapper.updateById(update);
     }
@@ -174,7 +201,7 @@ public class DeviceDiscoveryScanner {
     /**
      * 保存发现的设备，IP+端口重复时跳过
      */
-    private void saveDiscoveredDevice(String ip, int port, HealthResp resp) {
+    private SaveResult saveDiscoveredDevice(String ip, int port, HealthResp resp) {
         String name = ip + ":" + port;
         if (resp.getData() != null && resp.getData().getHostIp() != null) {
             name = resp.getData().getHostIp() + ":" + port;
@@ -190,10 +217,23 @@ public class DeviceDiscoveryScanner {
         try {
             deviceMapper.insert(device);
             log.info("发现新设备：{}:{}, name={}", ip, port, name);
+            writeActionLog(device, "网段发现添加设备：" + name + "(" + ip + ":" + port + ")");
             collectImmediately(device);
+            return new SaveResult(true, null);
         } catch (DuplicateKeyException e) {
             log.debug("设备已存在，跳过：{}:{}", ip, port);
+            return new SaveResult(false, "设备已存在");
         }
+    }
+
+    private void writeActionLog(Device device, String message) {
+        ActionLog log = new ActionLog();
+        log.setDeviceId(device.getId());
+        log.setActionType("SYSTEM");
+        log.setLogLevel("INFO");
+        log.setMessage(message);
+        log.setCreatedAt(LocalDateTime.now());
+        actionLogMapper.insert(log);
     }
 
     /**
@@ -208,5 +248,42 @@ public class DeviceDiscoveryScanner {
         } catch (Exception e) {
             log.warn("发现设备立即采集失败：{}:{}", device.getIp(), device.getPort(), e);
         }
+    }
+
+    private static class SaveResult {
+        final boolean added;
+        final String reason;
+        SaveResult(boolean added, String reason) {
+            this.added = added;
+            this.reason = reason;
+        }
+    }
+
+    public static class DiscoveryIpResult {
+        public String ip;
+        public Integer port;
+        public String result;
+        public String message;
+        public DiscoveryIpResult(String ip, Integer port, String result, String message) {
+            this.ip = ip;
+            this.port = port;
+            this.result = result;
+            this.message = message;
+        }
+    }
+
+    public static class DiscoverTaskDetail {
+        private int addedCount;
+        private int duplicateCount;
+        private int failedCount;
+        private List<DiscoveryIpResult> ipResults;
+        public int getAddedCount() { return addedCount; }
+        public void setAddedCount(int addedCount) { this.addedCount = addedCount; }
+        public int getDuplicateCount() { return duplicateCount; }
+        public void setDuplicateCount(int duplicateCount) { this.duplicateCount = duplicateCount; }
+        public int getFailedCount() { return failedCount; }
+        public void setFailedCount(int failedCount) { this.failedCount = failedCount; }
+        public List<DiscoveryIpResult> getIpResults() { return ipResults; }
+        public void setIpResults(List<DiscoveryIpResult> ipResults) { this.ipResults = ipResults; }
     }
 }

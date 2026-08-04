@@ -1,5 +1,6 @@
 package bob.myxos.main.service.impl;
 
+import bob.myxos.common.exception.BizException;
 import bob.myxos.common.util.IpUtils;
 import bob.myxos.domain.entity.DiscoverTask;
 import bob.myxos.domain.mapper.DiscoverTaskMapper;
@@ -48,6 +49,16 @@ public class DiscoverServiceImpl implements DiscoverService {
         wrapper.eq(DiscoverTask::getDeleted, 0);
         wrapper.orderByDesc(DiscoverTask::getStartedAt);
         return discoverTaskMapper.selectPage(new Page<>(page, size), wrapper);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DiscoverTask getTaskDetail(Long id) {
+        DiscoverTask task = discoverTaskMapper.selectById(id);
+        if (task == null || (task.getDeleted() != null && task.getDeleted() == 1)) {
+            throw new BizException("发现任务不存在");
+        }
+        return task;
     }
 
     @Override

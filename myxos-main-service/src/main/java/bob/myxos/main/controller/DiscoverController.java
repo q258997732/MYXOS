@@ -56,6 +56,17 @@ public class DiscoverController {
     }
 
     /**
+     * 查询指定发现任务详情
+     *
+     * @param id 任务 ID
+     * @return 发现任务详情
+     */
+    @GetMapping("/tasks/{id}")
+    public Result<DiscoverTask> detail(@PathVariable Long id) {
+        return Result.ok(discoverService.getTaskDetail(id));
+    }
+
+    /**
      * 删除指定发现任务（逻辑删除）
      *
      * @param id 任务 ID
