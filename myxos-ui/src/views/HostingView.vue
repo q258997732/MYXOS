@@ -84,17 +84,19 @@
             <el-divider content-position="left">发现进度</el-divider>
             <div class="progress-info">
               <span>{{ runningTask.cidr }}</span>
+              <el-tag :type="statusType(runningTask.status)" size="small">{{ runningTask.status }}</el-tag>
+            </div>
+            <div class="progress-bar-row">
+              <el-progress
+                :percentage="progressPercent(runningTask)"
+                :status="runningTask.status === 'RUNNING' ? '' : 'success'"
+                :stroke-width="18"
+                striped
+                striped-flow
+              />
               <span class="progress-count">{{ runningTask.scannedIpCount }} / {{ runningTask.totalIpCount }}</span>
             </div>
-            <el-progress
-              :percentage="progressPercent(runningTask)"
-              :status="runningTask.status === 'RUNNING' ? '' : 'success'"
-              :stroke-width="18"
-              striped
-              striped-flow
-            />
             <div class="progress-status">
-              <el-tag :type="statusType(runningTask.status)" size="small">{{ runningTask.status }}</el-tag>
               <span class="progress-message">{{ runningTask.message }}</span>
             </div>
           </div>
@@ -111,10 +113,10 @@
       </template>
 
       <el-table v-loading="loading" :data="tasks" size="small" stripe>
-        <el-table-column prop="cidr" label="CIDR" width="120" show-overflow-tooltip />
+        <el-table-column prop="cidr" label="CIDR" width="150" show-overflow-tooltip />
         <el-table-column prop="portFrom" label="起始端口" width="85" />
         <el-table-column prop="portTo" label="结束端口" width="85" />
-        <el-table-column label="进度" width="140">
+        <el-table-column label="进度" min-width="220">
           <template #default="{ row }">
             <div class="progress-cell">
               <el-progress :percentage="progressPercent(row)" :stroke-width="10" />
@@ -425,20 +427,34 @@ onUnmounted(() => {
   font-size: 13px;
   color: var(--text-secondary);
 }
+.progress-bar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+.progress-bar-row :deep(.el-progress) {
+  flex: 1;
+}
+.progress-bar-row .progress-count {
+  flex-shrink: 0;
+}
 .progress-cell {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 8px;
 }
 .progress-cell :deep(.el-progress) {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 .progress-text {
-  font-size: 11px;
+  flex-shrink: 0;
+  font-size: 12px;
   color: var(--text-muted);
   line-height: 1;
+  white-space: nowrap;
 }
 .card-header {
   display: flex;
