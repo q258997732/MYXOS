@@ -2,6 +2,7 @@ package bob.myxos.main.config;
 
 import bob.myxos.common.api.Result;
 import bob.myxos.common.exception.BizException;
+import bob.myxos.mytos.MytosException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -76,6 +77,26 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining(";"));
         log.warn("参数校验失败: {}", msg);
         return Result.fail(400, msg);
+    }
+
+    /**
+     * 处理 MYTOS 设备调用异常
+     * <p>
+     * 将设备端业务错误码与消息透传给前端，避免被兜底 Exception 处理器包装为"系统繁忙，请稍后重试"。
+     * 网络/连接类异常不直接透传原始堆栈消息，仅记录服务端日志。
+     *
+     * @param ex MYTOS 设备调用异常
+     * @return 统一响应，设备业务错误返回 502，连接类错误返回 500
+     */
+    @ExceptionHandler(MytosException.class)
+    public Result<Void> handleMytosException(MytosException ex) {
+        Integer deviceCode = ex.getDeviceCode();
+        String message = ex.getMessage();
+        log.warn("设备调用异常: deviceCode={}, msg={}", deviceCode, message);
+        if (deviceCode != null) {
+            return Result.fail(502, message);
+        }
+        return Result.fail(500, "设备连接失败，请检查网络或设备状态");
     }
 
     /**

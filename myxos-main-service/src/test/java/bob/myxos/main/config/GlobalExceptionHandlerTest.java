@@ -2,6 +2,7 @@ package bob.myxos.main.config;
 
 import bob.myxos.common.api.Result;
 import bob.myxos.common.exception.BizException;
+import bob.myxos.mytos.MytosException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -90,6 +91,36 @@ class GlobalExceptionHandlerTest {
         assertNotNull(result);
         assertEquals(400, result.getCode());
         assertTrue(result.getMsg().contains("用户名不能为空"));
+    }
+
+    @Test
+    @DisplayName("处理 MYTOS 设备业务异常应返回 502 与设备错误消息")
+    void handleMytosExceptionReturnsDeviceCodeAndMsg() {
+        // Arrange
+        MytosException ex = new MytosException(201, "设备返回错误: 截图失败");
+
+        // Act
+        Result<Void> result = handler.handleMytosException(ex);
+
+        // Assert
+        assertNotNull(result);
+        assertEquals(502, result.getCode());
+        assertEquals("设备返回错误: 截图失败", result.getMsg());
+    }
+
+    @Test
+    @DisplayName("处理设备连接类异常应返回 500 通用提示")
+    void handleMytosExceptionWithoutDeviceCodeReturns500() {
+        // Arrange
+        MytosException ex = new MytosException("设备 HTTP 调用异常: Connection refused: 192.168.30.2:9082");
+
+        // Act
+        Result<Void> result = handler.handleMytosException(ex);
+
+        // Assert
+        assertNotNull(result);
+        assertEquals(500, result.getCode());
+        assertEquals("设备连接失败，请检查网络或设备状态", result.getMsg());
     }
 
     @Test

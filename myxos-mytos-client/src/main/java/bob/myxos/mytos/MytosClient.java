@@ -28,6 +28,11 @@ public class MytosClient {
     /** Shell 命令最大长度 */
     private static final int SHELL_COMMAND_MAX_LENGTH = 500;
 
+    /** IP 地址格式校验（IPv4 / IPv6，仅用于防止路径注入） */
+    private static final Pattern IP_PATTERN = Pattern.compile(
+            "^(?:(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|[01]?\\d?\\d)$|"
+                    + "^\\[[0-9a-fA-F:]+\\]$|^[0-9a-fA-F:]+$");
+
     /** 禁止执行的 Shell 命令模式（不区分大小写） */
     private static final Pattern DANGEROUS_SHELL_PATTERN = Pattern.compile(
             "\\b(rm\\s+-rf|reboot|shutdown|dd\\s+if=|mkfs|format|su\\b|mount\\s+-o\\s+remount)\\b",
@@ -66,7 +71,7 @@ public class MytosClient {
      * @return 健康检查响应
      */
     public HealthResp healthcheck(String hostIp) {
-        requireNonBlank(hostIp, "hostIp 不能为空");
+        requireValidIp(hostIp, "hostIp");
         return doPost("/host_api/v1/healthcheck/" + hostIp, HealthResp.class);
     }
 
@@ -78,7 +83,7 @@ public class MytosClient {
      * @return 系统信息响应
      */
     public HostSystemInfoResp getSystemInfo(String hostIp) {
-        requireNonBlank(hostIp, "hostIp 不能为空");
+        requireValidIp(hostIp, "hostIp");
         return doGet("/host_api/v1/get_systeminfo/" + hostIp, HostSystemInfoResp.class);
     }
 
@@ -110,7 +115,7 @@ public class MytosClient {
      * @return 版本响应
      */
     public HostVerResp getHostVer(String ip) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         return doGet("/dc_api/v1/get_host_ver/" + ip, HostVerResp.class);
     }
 
@@ -122,7 +127,7 @@ public class MytosClient {
      * @return 网络明细响应
      */
     public NetworkDetailResp getNetworkDetail(String ip) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         return doGet("/dc_api/v1/get_network_detail/" + ip, NetworkDetailResp.class);
     }
 
@@ -144,7 +149,7 @@ public class MytosClient {
      * @return 基础响应
      */
     public MytosBaseResp rebootHost(String hostIp) {
-        requireNonBlank(hostIp, "hostIp 不能为空");
+        requireValidIp(hostIp, "hostIp");
         return doGet("/host_api/v1/reboot_host/" + hostIp, MytosBaseResp.class);
     }
 
@@ -158,7 +163,7 @@ public class MytosClient {
      * @return 容器列表响应
      */
     public AndroidListResp listAndroid(String ip) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         return doGet("/dc_api/v1/list/" + ip, AndroidListResp.class);
     }
 
@@ -171,7 +176,7 @@ public class MytosClient {
      * @return 实例详情响应
      */
     public AndroidDetailResp getAndroidDetail(String ip, String name) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         requireSafePathSegment(name, "name 不能为空");
         return doGet("/dc_api/v1/get_android_detail/" + ip + "/" + name, AndroidDetailResp.class);
     }
@@ -185,7 +190,7 @@ public class MytosClient {
      * @return 启动状态响应
      */
     public BootStatusResp getAndroidBootStatus(String ip, String name) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         requireSafePathSegment(name, "name 不能为空");
         return doGet("/and_api/v1/get_android_boot_status/" + ip + "/" + name, BootStatusResp.class);
     }
@@ -199,7 +204,7 @@ public class MytosClient {
      * @return 基础响应
      */
     public MytosBaseResp runAndroid(String ip, String name) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         requireSafePathSegment(name, "name 不能为空");
         return doGet("/dc_api/v1/run/" + ip + "/" + name, MytosBaseResp.class);
     }
@@ -213,7 +218,7 @@ public class MytosClient {
      * @return 基础响应
      */
     public MytosBaseResp stopAndroid(String ip, String name) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         requireSafePathSegment(name, "name 不能为空");
         return doGet("/dc_api/v1/stop/" + ip + "/" + name, MytosBaseResp.class);
     }
@@ -227,7 +232,7 @@ public class MytosClient {
      * @return 基础响应
      */
     public MytosBaseResp rebootAndroid(String ip, String name) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         requireSafePathSegment(name, "name 不能为空");
         return doGet("/dc_api/v1/reboot/" + ip + "/" + name, MytosBaseResp.class);
     }
@@ -241,7 +246,7 @@ public class MytosClient {
      * @return 基础响应
      */
     public MytosBaseResp resetAndroid(String ip, String name) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         requireSafePathSegment(name, "name 不能为空");
         return doGet("/dc_api/v1/reset/" + ip + "/" + name, MytosBaseResp.class);
     }
@@ -256,7 +261,7 @@ public class MytosClient {
      * @return 基础响应
      */
     public MytosBaseResp renameAndroid(String ip, String oldName, String newName) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         requireSafePathSegment(oldName, "oldName 不能为空");
         requireSafePathSegment(newName, "newName 不能为空");
         return doGet("/dc_api/v1/rename/" + ip + "/" + oldName + "/" + newName, MytosBaseResp.class);
@@ -274,7 +279,7 @@ public class MytosClient {
      * @return 截图响应
      */
     public ScreenshotResp screenshot(String ip, String name, String level) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         requireSafePathSegment(name, "name 不能为空");
         requireSafePathSegment(level, "level 不能为空");
         return doGet("/and_api/v1/screenshots/" + ip + "/" + name + "/" + level, ScreenshotResp.class);
@@ -290,7 +295,7 @@ public class MytosClient {
      * @return shell 执行结果响应
      */
     public ShellResp shell(String ip, String name, String command) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         requireSafePathSegment(name, "name 不能为空");
         requireNonBlank(command, "command 不能为空");
         validateShellCommand(command);
@@ -326,7 +331,7 @@ public class MytosClient {
      * @return 基础响应
      */
     public MytosBaseResp clipboardSet(String ip, String name, String text) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         requireSafePathSegment(name, "name 不能为空");
         requireNonBlank(text, "text 不能为空");
         HttpUrl url = newUrlBuilder("/and_api/v1/clipboard_set/" + ip + "/" + name)
@@ -344,7 +349,7 @@ public class MytosClient {
      * @return 剪贴板响应
      */
     public ClipboardResp clipboardGet(String ip, String name) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         requireSafePathSegment(name, "name 不能为空");
         return doGet("/and_api/v1/clipboard_get/" + ip + "/" + name, ClipboardResp.class);
     }
@@ -360,7 +365,7 @@ public class MytosClient {
      * @return 基础响应
      */
     public MytosBaseResp setLanguage(String ip, String name, String country, String language) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         requireSafePathSegment(name, "name 不能为空");
         requireSafePathSegment(country, "country 不能为空");
         requireSafePathSegment(language, "language 不能为空");
@@ -377,7 +382,7 @@ public class MytosClient {
      * @return 基础响应
      */
     public MytosBaseResp setIpLocation(String ip, String name, String language) {
-        requireNonBlank(ip, "ip 不能为空");
+        requireValidIp(ip, "ip");
         requireSafePathSegment(name, "name 不能为空");
         requireSafePathSegment(language, "language 不能为空");
         return doGet("/and_api/v1/set_ipLocation/" + ip + "/" + name + "/" + language, MytosBaseResp.class);
@@ -501,7 +506,8 @@ public class MytosClient {
         }
         if (resp.getCode() != CODE_SUCCESS) {
             String errMsg = resp.getError() != null ? resp.getError()
-                    : (resp.getReason() != null ? resp.getReason() : "未知错误");
+                    : (resp.getReason() != null ? resp.getReason()
+                    : (resp.getMsg() != null ? resp.getMsg() : "未知错误"));
             throw new MytosException(resp.getCode(), "设备返回错误: " + errMsg);
         }
     }
@@ -528,6 +534,16 @@ public class MytosClient {
     private void requireNonBlank(String value, String message) {
         if (value == null || value.trim().isEmpty()) {
             throw new IllegalArgumentException(message);
+        }
+    }
+
+    /**
+     * 校验 IP 地址格式，防止路径注入或构造异常 URL
+     */
+    private void requireValidIp(String value, String paramName) {
+        requireNonBlank(value, paramName + " 不能为空");
+        if (!IP_PATTERN.matcher(value).matches()) {
+            throw new IllegalArgumentException("IP 格式非法: " + value);
         }
     }
 

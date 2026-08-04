@@ -98,6 +98,36 @@ class MytosClientTest {
                 .hasMessageContaining("设备内部错误");
     }
 
+    @Test
+    @DisplayName("healthcheck() 设备返回失败码且只有 msg 时应使用 msg 作为错误信息")
+    void healthcheck_should_use_msg_when_device_returns_error_code_without_reason() {
+        String responseBody = "{\"code\":500,\"msg\":\"设备磁盘空间不足\"}";
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(responseBody));
+
+        assertThatThrownBy(() -> mytosClient.healthcheck("192.168.30.2"))
+                .isInstanceOf(MytosException.class)
+                .hasMessageContaining("设备磁盘空间不足");
+    }
+
+    @Test
+    @DisplayName("healthcheck() 应拒绝包含路径注入的非法 IP")
+    void healthcheck_should_reject_ip_with_path_injection() {
+        assertThatThrownBy(() -> mytosClient.healthcheck("192.168.1.1/../admin"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("IP");
+    }
+
+    @Test
+    @DisplayName("getHostVer() 应拒绝包含查询字符串的非法 IP")
+    void getHostVer_should_reject_ip_with_query_string() {
+        assertThatThrownBy(() -> mytosClient.getHostVer("192.168.1.1?foo=bar"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("IP");
+    }
+
     // ==================== 主机版本测试 ====================
 
     @Test
