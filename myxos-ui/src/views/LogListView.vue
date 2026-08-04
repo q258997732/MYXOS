@@ -1,6 +1,12 @@
 <template>
   <div class="page-container">
-    <h2 class="page-title">日志查询</h2>
+    <div class="page-header">
+      <h2 class="page-title">日志查询</h2>
+      <div class="page-actions">
+        <span>{{ userStore.username }}</span>
+        <el-button type="primary" link @click="logout">登出</el-button>
+      </div>
+    </div>
 
     <div class="filter-card">
       <el-form :inline="true" :model="query" size="default">
@@ -30,15 +36,24 @@
 
     <div class="content-card">
       <el-table v-loading="loading" :data="logs" size="small" stripe>
-        <el-table-column prop="deviceId" label="设备ID" width="100" />
-        <el-table-column prop="actionType" label="动作类型" width="120" />
-        <el-table-column prop="logLevel" label="日志级别" width="100">
+        <el-table-column prop="id" label="日志ID" width="90" />
+        <el-table-column prop="deviceId" label="设备ID" width="90" />
+        <el-table-column prop="taskId" label="任务ID" width="90" />
+        <el-table-column prop="actionType" label="动作类型" width="100" />
+        <el-table-column prop="logLevel" label="日志级别" width="90">
           <template #default="{ row }">
             <el-tag :type="logLevelType(row.logLevel)" size="small">{{ row.logLevel }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="message" label="消息" show-overflow-tooltip />
-        <el-table-column prop="createdAt" label="时间" width="160" />
+        <el-table-column prop="message" label="消息" min-width="260" show-overflow-tooltip />
+        <el-table-column prop="createdAt" label="时间" width="160">
+          <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="90" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" link @click="openDetail(row)">详情</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <div class="pagination-bar">
@@ -52,18 +67,53 @@
         />
       </div>
     </div>
+
+    <el-dialog v-model="detailVisible" title="日志详情" width="560px" align-center destroy-on-close>
+      <el-descriptions v-if="currentLog" :column="1" border size="small">
+        <el-descriptions-item label="日志ID">{{ currentLog.id }}</el-descriptions-item>
+        <el-descriptions-item label="设备ID">{{ currentLog.deviceId }}</el-descriptions-item>
+        <el-descriptions-item label="任务ID">{{ currentLog.taskId }}</el-descriptions-item>
+        <el-descriptions-item label="动作类型">{{ currentLog.actionType }}</el-descriptions-item>
+        <el-descriptions-item label="日志级别">
+          <el-tag :type="logLevelType(currentLog.logLevel)" size="small">{{ currentLog.logLevel }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="时间">{{ formatDateTime(currentLog.createdAt) }}</el-descriptions-item>
+        <el-descriptions-item label="详细内容">
+          <pre class="log-detail">{{ currentLog.message }}</pre>
+        </el-descriptions-item>
+      </el-descriptions>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Search, Refresh } from '@element-plus/icons-vue'
-import { logApi } from '@/api'
+import { logApi, authApi } from '@/api'
+import { useUserStore } from '@/store'
+import { formatDateTime } from '@/utils/date'
+
+const router = useRouter()
+const userStore = useUserStore()
+
+const logout = async () => {
+  try {
+    await authApi.logout()
+  } catch (e) {
+    // ignore
+  }
+  userStore.clearUser()
+  router.push('/login')
+}
 
 const logs = reactive([])
 const total = ref(0)
 const loading = ref(false)
 const query = reactive({ actionType: '', logLevel: '', page: 1, size: 20 })
+
+const detailVisible = ref(false)
+const currentLog = ref(null)
 
 const logLevelType = (level) => {
   switch (level) {
@@ -97,5 +147,24 @@ const reset = () => {
   load()
 }
 
+const openDetail = (row) => {
+  currentLog.value = row
+  detailVisible.value = true
+}
+
 onMounted(load)
 </script>
+
+<style scoped>
+.log-detail {
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 400px;
+  overflow: auto;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  background-color: #f5f7fa;
+  padding: var(--spacing-sm);
+  border-radius: var(--border-radius);
+}
+</style>
