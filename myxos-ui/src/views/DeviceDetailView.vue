@@ -83,7 +83,7 @@
           <h4 class="metric-section-title">安卓实例状态</h4>
           <el-empty v-if="androids.length === 0" description="暂无安卓实例状态" />
           <el-row :gutter="16" v-else>
-            <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in androids" :key="item.name">
+            <el-col :xs="24" :sm="24" :md="12" :lg="12" v-for="item in androids" :key="item.name">
               <el-card class="metric-card android-status-card" shadow="hover" @click="selectInstance(item.name)">
                 <div class="android-status-header">
                   <el-tag :type="androidStatusType(item.status)" size="small">{{ item.statusLabel }}</el-tag>
@@ -98,26 +98,16 @@
       </el-tab-pane>
 
       <el-tab-pane label="手动操作" name="ops">
-        <!-- 主机操作（3588） -->
+        <!-- 主机操作 -->
         <el-card class="op-card" shadow="never">
           <template #header>
-            <div class="op-card-header">主机操作（3588）</div>
+            <div class="op-card-header">主机操作</div>
           </template>
-          <el-alert type="info" :closable="false" show-icon title="主机级操作会影响整台 3588 设备及其安卓实例">
-            请选择目标实例后执行对应操作。
+          <el-alert type="info" :closable="false" show-icon title="主机级操作会影响整台设备及其安卓实例">
+            主机级操作无需选择实例，直接执行即可。
           </el-alert>
-          <el-form inline class="op-form">
-            <el-form-item label="实例名称">
-              <el-select v-model="instanceName" placeholder="请选择实例" filterable style="width: 260px">
-                <el-option v-for="item in androids" :key="item.name" :label="item.name" :value="item.name" />
-              </el-select>
-            </el-form-item>
-          </el-form>
           <div class="op-buttons">
             <el-button type="danger" @click="submitOp('REBOOT_HOST')">重启主机</el-button>
-            <el-button type="success" @click="submitAndroidOp('RUN_ANDROID')">启动安卓</el-button>
-            <el-button type="info" @click="submitAndroidOp('STOP_ANDROID')">停止安卓</el-button>
-            <el-button type="warning" @click="submitAndroidOp('REBOOT_ANDROID')">重启安卓</el-button>
           </div>
         </el-card>
 
@@ -126,8 +116,8 @@
           <template #header>
             <div class="op-card-header">实例操作</div>
           </template>
-          <el-alert type="info" :closable="false" show-icon title="实例级操作针对运行中的安卓系统">
-            请选择实例后执行截图、剪贴板、语言设置、IP 定位或 Adb 命令。
+          <el-alert type="info" :closable="false" show-icon title="实例级操作针对选中的安卓系统">
+            请先选择目标实例，再执行对应操作。
           </el-alert>
           <el-form inline class="op-form">
             <el-form-item label="实例名称">
@@ -139,63 +129,37 @@
               <el-input v-model="newInstanceName" placeholder="重命名时填写" style="width: 220px;" />
             </el-form-item>
           </el-form>
-          <div class="op-buttons">
-            <el-button @click="submitAndroidOp('RESET_ANDROID')">重置实例</el-button>
-            <el-button v-if="!showRename" @click="showRename = true">重命名</el-button>
-            <el-button v-else type="primary" @click="submitAndroidOp('RENAME_ANDROID')">确认重命名</el-button>
-            <el-button type="primary" plain @click="submitScreenshot">截图（临时查看）</el-button>
-            <el-button @click="openDialog('clipboard')">设置剪贴板</el-button>
-            <el-button @click="submitClipboardGet">获取剪贴板</el-button>
-            <el-button @click="openDialog('language')">设置语言</el-button>
-            <el-button @click="openDialog('location')">IP 智能定位</el-button>
-            <el-button @click="openDialog('shell')">执行 Adb 命令</el-button>
+
+          <div class="op-group">
+            <div class="op-group-title">生命周期</div>
+            <div class="op-buttons">
+              <el-button type="success" @click="submitAndroidOp('RUN_ANDROID')">启动</el-button>
+              <el-button type="info" @click="submitAndroidOp('STOP_ANDROID')">停止</el-button>
+              <el-button type="warning" @click="submitAndroidOp('REBOOT_ANDROID')">重启</el-button>
+              <el-button @click="submitAndroidOp('RESET_ANDROID')">重置</el-button>
+              <el-button v-if="!showRename" @click="showRename = true">重命名</el-button>
+              <el-button v-else type="primary" @click="submitAndroidOp('RENAME_ANDROID')">确认重命名</el-button>
+            </div>
+          </div>
+
+          <div class="op-group">
+            <div class="op-group-title">剪贴板</div>
+            <div class="op-buttons">
+              <el-button @click="openDialog('clipboard')">设置剪贴板</el-button>
+              <el-button @click="submitClipboardGet">获取剪贴板</el-button>
+            </div>
+          </div>
+
+          <div class="op-group">
+            <div class="op-group-title">其他</div>
+            <div class="op-buttons">
+              <el-button type="primary" plain @click="submitScreenshot">截图（临时查看）</el-button>
+              <el-button @click="openDialog('language')">设置语言</el-button>
+              <el-button @click="openDialog('location')">IP 智能定位</el-button>
+              <el-button @click="openDialog('shell')">执行 Adb 命令</el-button>
+            </div>
           </div>
         </el-card>
-
-        <!-- 截图临时预览 -->
-        <el-dialog v-model="screenshotVisible" title="设备截图" width="fit-content" align-center destroy-on-close>
-          <img v-if="screenshotData" :src="screenshotData" style="max-width: 80vw; max-height: 80vh; display: block;" />
-          <span v-else>暂无截图数据</span>
-        </el-dialog>
-
-        <!-- 参数/结果对话框 -->
-        <el-dialog v-model="dialogVisible" :title="dialogTitle" width="560px" align-center destroy-on-close>
-          <el-form v-if="dialogType === 'clipboard'">
-            <el-form-item label="文本内容">
-              <el-input v-model="dialogForm.text" type="textarea" :rows="3" />
-            </el-form-item>
-          </el-form>
-          <el-form v-if="dialogType === 'language'">
-            <el-form-item label="国家">
-              <el-input v-model="dialogForm.country" placeholder="如 cn" />
-            </el-form-item>
-            <el-form-item label="语言">
-              <el-input v-model="dialogForm.language" placeholder="如 zh" />
-            </el-form-item>
-          </el-form>
-          <el-form v-if="dialogType === 'location'">
-            <el-form-item label="语言">
-              <el-input v-model="dialogForm.language" placeholder="如 zh" />
-            </el-form-item>
-          </el-form>
-          <el-form v-if="dialogType === 'shell'">
-            <el-form-item label="Adb 命令">
-              <el-input v-model="dialogForm.command" type="textarea" :rows="3" placeholder="例如：pm list packages" />
-            </el-form-item>
-            <el-form-item v-if="dialogResult" label="执行结果">
-              <pre class="shell-result">{{ dialogResult }}</pre>
-            </el-form-item>
-          </el-form>
-          <template #footer>
-            <el-button @click="dialogVisible = false">取消</el-button>
-            <el-button type="primary" @click="confirmDialog" :loading="dialogLoading">确定</el-button>
-          </template>
-        </el-dialog>
-
-        <!-- 剪贴板内容展示 -->
-        <el-dialog v-model="clipboardVisible" title="剪贴板内容" width="480px" align-center destroy-on-close>
-          <el-input v-model="clipboardData" type="textarea" :rows="6" readonly />
-        </el-dialog>
       </el-tab-pane>
 
       <el-tab-pane label="最近告警" name="alarms">
@@ -238,8 +202,54 @@
       </el-tab-pane>
     </el-tabs>
 
+    <!-- 截图临时预览 -->
+    <el-dialog v-model="screenshotVisible" title="设备截图" width="fit-content" align-center destroy-on-close>
+      <img v-if="screenshotData" :src="screenshotData" style="max-width: 80vw; max-height: 80vh; display: block;" />
+      <span v-else>暂无截图数据</span>
+    </el-dialog>
+
+    <!-- 参数/结果对话框 -->
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="560px" align-center destroy-on-close>
+      <el-form v-if="dialogType === 'clipboard'">
+        <el-form-item label="文本内容">
+          <el-input v-model="dialogForm.text" type="textarea" :rows="3" />
+        </el-form-item>
+      </el-form>
+      <el-form v-if="dialogType === 'language'">
+        <el-form-item label="国家">
+          <el-input v-model="dialogForm.country" placeholder="如 cn" />
+        </el-form-item>
+        <el-form-item label="语言">
+          <el-input v-model="dialogForm.language" placeholder="如 zh" />
+        </el-form-item>
+      </el-form>
+      <el-form v-if="dialogType === 'location'">
+        <el-form-item label="语言">
+          <el-input v-model="dialogForm.language" placeholder="如 zh" />
+        </el-form-item>
+      </el-form>
+      <el-form v-if="dialogType === 'shell'">
+        <el-form-item label="Adb 命令">
+          <el-input v-model="dialogForm.command" type="textarea" :rows="3" placeholder="例如：pm list packages" />
+        </el-form-item>
+        <el-form-item v-if="dialogResult" label="执行结果">
+          <pre class="shell-result">{{ dialogResult }}</pre>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmDialog" :loading="dialogLoading">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 剪贴板内容展示 -->
+    <el-dialog v-model="clipboardVisible" title="剪贴板内容" width="480px" align-center destroy-on-close>
+      <el-input v-model="clipboardData" type="textarea" :rows="6" readonly />
+    </el-dialog>
+
     <!-- 指标历史抽屉 -->
-    <el-drawer v-model="historyVisible" :title="historyTitle" size="600px">
+    <el-drawer v-model="historyVisible" :title="historyTitle" size="700px">
+      <div ref="historyChartRef" class="history-chart" v-show="historyChartVisible"></div>
       <el-table v-loading="historyLoading" :data="historyRecords" size="small" stripe>
         <el-table-column prop="metricValue" label="指标值" />
         <el-table-column label="采集时间" width="180">
@@ -261,10 +271,11 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted, onUnmounted, computed } from 'vue'
+import { reactive, ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Cellphone, Picture, MapLocation, InfoFilled } from '@element-plus/icons-vue'
+import * as echarts from 'echarts'
 import { deviceApi, authApi } from '@/api'
 import { useUserStore } from '@/store'
 import DeviceStatusTag from '@/components/DeviceStatusTag.vue'
@@ -313,6 +324,13 @@ const historyTitle = ref('')
 const historyRecords = reactive([])
 const historyTotal = ref(0)
 const historyQuery = reactive({ page: 1, size: 20, metricType: '' })
+const historyChartRef = ref(null)
+const historyChartVisible = ref(false)
+let historyChart = null
+let taskPollTimer = null
+
+const TASK_POLL_MAX_COUNT = 10
+const TASK_POLL_INTERVAL_MS = 3000
 
 const METRIC_LABELS = {
   CPU: 'CPU 使用率',
@@ -393,6 +411,7 @@ function formatMetricValue(item) {
 function androidStatusType(status) {
   if (status === 'RUNNING') return 'success'
   if (status === 'STOPPED') return 'danger'
+  if (status === 'TRANSITION') return 'warning'
   return 'info'
 }
 
@@ -441,7 +460,38 @@ async function quickScreenshot(name) {
 async function submitOp(code, params = {}) {
   await deviceApi.ops(deviceId, { operationCode: code, params })
   ElMessage.success('任务已提交')
-  await loadTasks()
+  try {
+    await loadTasks()
+  } catch (e) {
+    // 错误已在拦截器中提示，避免阻塞弹窗关闭
+  }
+  if (activeTab.value === 'tasks') {
+    startTaskPolling()
+  }
+}
+
+function startTaskPolling() {
+  stopTaskPolling()
+  let count = 0
+  taskPollTimer = setInterval(async () => {
+    try {
+      await loadTasks()
+    } catch (e) {
+      // 错误已在拦截器中提示，继续轮询直到达到上限
+    } finally {
+      count++
+      if (count >= TASK_POLL_MAX_COUNT) {
+        stopTaskPolling()
+      }
+    }
+  }, TASK_POLL_INTERVAL_MS)
+}
+
+function stopTaskPolling() {
+  if (taskPollTimer) {
+    clearInterval(taskPollTimer)
+    taskPollTimer = null
+  }
 }
 
 async function submitAndroidOp(code) {
@@ -505,6 +555,10 @@ function openDialog(type) {
   }
   dialogType.value = type
   dialogResult.value = ''
+  dialogForm.text = ''
+  dialogForm.country = ''
+  dialogForm.language = ''
+  dialogForm.command = ''
   if (type === 'clipboard') {
     dialogTitle.value = '设置剪贴板'
   } else if (type === 'language') {
@@ -590,8 +644,50 @@ async function loadMetricHistory() {
     })
     historyRecords.splice(0, historyRecords.length, ...(res.data.records || []))
     historyTotal.value = res.data.total || 0
+    renderHistoryChart()
   } finally {
     historyLoading.value = false
+  }
+}
+
+async function renderHistoryChart() {
+  if (!historyChartRef.value) return
+  const records = [...historyRecords].reverse()
+  const numericValues = records.map(r => parseFloat(r.metricValue)).filter(v => !isNaN(v))
+  if (numericValues.length === 0) {
+    historyChartVisible.value = false
+    return
+  }
+  historyChartVisible.value = true
+  await nextTick()
+  if (!historyChart) {
+    historyChart = echarts.init(historyChartRef.value)
+    window.addEventListener('resize', handleChartResize)
+  }
+  const xData = records.map(r => formatDateTime(r.collectedAt))
+  const yData = records.map(r => {
+    const v = parseFloat(r.metricValue)
+    return isNaN(v) ? null : v
+  })
+  historyChart.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+    xAxis: { type: 'category', data: xData, boundaryGap: false },
+    yAxis: { type: 'value' },
+    series: [{
+      name: historyTitle.value,
+      type: 'line',
+      smooth: true,
+      data: yData,
+      areaStyle: { opacity: 0.2 },
+      connectNulls: false
+    }]
+  }, true)
+}
+
+function handleChartResize() {
+  if (historyChart) {
+    historyChart.resize()
   }
 }
 
@@ -612,6 +708,26 @@ function stopRefresh() {
   }
 }
 
+watch(activeTab, (val) => {
+  if (val === 'tasks') {
+    loadTasks()
+    startTaskPolling()
+  } else {
+    stopTaskPolling()
+  }
+})
+
+watch(historyVisible, (val) => {
+  if (!val) {
+    historyChartVisible.value = false
+    if (historyChart) {
+      window.removeEventListener('resize', handleChartResize)
+      historyChart.dispose()
+      historyChart = null
+    }
+  }
+})
+
 onMounted(() => {
   loadDevice()
   loadAndroids()
@@ -624,6 +740,12 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopRefresh()
+  stopTaskPolling()
+  if (historyChart) {
+    window.removeEventListener('resize', handleChartResize)
+    historyChart.dispose()
+    historyChart = null
+  }
 })
 </script>
 
@@ -646,6 +768,23 @@ onUnmounted(() => {
 }
 .op-buttons .el-button {
   margin-left: 0 !important;
+}
+.op-group {
+  margin-bottom: var(--spacing-md);
+}
+.op-group-title {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-sm);
+  font-weight: 600;
+}
+.op-group .op-buttons {
+  margin-top: 0;
+}
+.history-chart {
+  width: 100%;
+  height: 260px;
+  margin-bottom: var(--spacing-md);
 }
 .shell-result {
   background-color: #f5f7fa;
