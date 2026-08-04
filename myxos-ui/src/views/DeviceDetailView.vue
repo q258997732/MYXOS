@@ -70,15 +70,23 @@
       </el-tab-pane>
 
       <el-tab-pane label="手动操作" name="ops">
-        <div class="op-section">
-          <h4>主机级</h4>
-          <el-button-group>
-            <el-button @click="submitOp('REBOOT_HOST')">重启主机</el-button>
+        <!-- 主机级 -->
+        <el-card class="op-card" shadow="never">
+          <template #header><div class="op-card-header">主机操作</div></template>
+          <el-alert type="info" :closable="false" show-icon title="主机级操作会影响整台设备">
+            以下操作针对当前设备（{{ device.ip }}:{{ device.port }}）本身执行。
+          </el-alert>
+          <el-button-group class="op-buttons">
+            <el-button type="danger" plain @click="submitOp('REBOOT_HOST')">重启主机</el-button>
           </el-button-group>
-        </div>
+        </el-card>
 
-        <div class="op-section">
-          <h4>容器生命周期</h4>
+        <!-- 安卓容器级 -->
+        <el-card class="op-card" shadow="never">
+          <template #header><div class="op-card-header">安卓容器操作</div></template>
+          <el-alert type="info" :closable="false" show-icon title="容器级操作会改变容器的运行状态">
+            请选择下方容器，然后执行启动、停止、重启、重置或重命名。
+          </el-alert>
           <el-form inline>
             <el-form-item label="容器名称">
               <el-select v-model="instanceName" placeholder="请选择容器" filterable style="width: 220px">
@@ -89,18 +97,22 @@
               <el-input v-model="newInstanceName" placeholder="重命名时填写" style="width: 200px;" />
             </el-form-item>
           </el-form>
-          <el-button-group>
-            <el-button @click="submitAndroidOp('RUN_ANDROID')">启动</el-button>
-            <el-button @click="submitAndroidOp('STOP_ANDROID')">停止</el-button>
-            <el-button @click="submitAndroidOp('REBOOT_ANDROID')">重启</el-button>
-            <el-button @click="submitAndroidOp('RESET_ANDROID')">重置</el-button>
+          <el-button-group class="op-buttons">
+            <el-button @click="submitAndroidOp('RUN_ANDROID')">启动容器</el-button>
+            <el-button @click="submitAndroidOp('STOP_ANDROID')">停止容器</el-button>
+            <el-button @click="submitAndroidOp('REBOOT_ANDROID')">重启容器</el-button>
+            <el-button type="warning" plain @click="submitAndroidOp('RESET_ANDROID')">重置容器</el-button>
             <el-button v-if="!showRename" @click="showRename = true">重命名</el-button>
             <el-button v-else type="primary" @click="submitAndroidOp('RENAME_ANDROID')">确认重命名</el-button>
           </el-button-group>
-        </div>
+        </el-card>
 
-        <div class="op-section">
-          <h4>安卓实例操作</h4>
+        <!-- 安卓实例级 -->
+        <el-card class="op-card" shadow="never">
+          <template #header><div class="op-card-header">安卓实例操作</div></template>
+          <el-alert type="info" :closable="false" show-icon title="实例级操作针对运行中的安卓系统">
+            请选择容器后执行截图、剪贴板、语言设置、IP 定位或 Adb 命令。
+          </el-alert>
           <el-form inline>
             <el-form-item label="容器名称">
               <el-select v-model="instanceName" placeholder="请选择容器" filterable style="width: 220px">
@@ -108,27 +120,27 @@
               </el-select>
             </el-form-item>
           </el-form>
-          <el-button-group>
+          <el-button-group class="op-buttons">
             <el-button @click="submitScreenshot">截图（临时查看）</el-button>
             <el-button @click="openDialog('clipboard')">设置剪贴板</el-button>
-            <el-button @click="submitAndroidOp('GET_CLIPBOARD')">获取剪贴板</el-button>
+            <el-button @click="submitClipboardGet">获取剪贴板</el-button>
             <el-button @click="openDialog('language')">设置语言</el-button>
-            <el-button @click="submitAndroidOp('REFRESH_LOCATION')">IP 智能定位</el-button>
+            <el-button @click="openDialog('location')">IP 智能定位</el-button>
             <el-button @click="openDialog('shell')">执行 Adb 命令</el-button>
           </el-button-group>
-        </div>
+        </el-card>
 
         <!-- 截图临时预览 -->
-        <el-dialog v-model="screenshotVisible" title="设备截图" width="400px">
-          <img v-if="screenshotData" :src="screenshotData" style="max-width: 100%;" />
+        <el-dialog v-model="screenshotVisible" title="设备截图" width="fit-content" align-center destroy-on-close>
+          <img v-if="screenshotData" :src="screenshotData" style="max-width: 80vw; max-height: 80vh; display: block;" />
           <span v-else>暂无截图数据</span>
         </el-dialog>
 
-        <!-- 参数对话框 -->
-        <el-dialog v-model="dialogVisible" :title="dialogTitle" width="400px">
+        <!-- 参数/结果对话框 -->
+        <el-dialog v-model="dialogVisible" :title="dialogTitle" width="560px" align-center destroy-on-close>
           <el-form v-if="dialogType === 'clipboard'">
             <el-form-item label="文本内容">
-              <el-input v-model="dialogForm.text" type="textarea" />
+              <el-input v-model="dialogForm.text" type="textarea" :rows="3" />
             </el-form-item>
           </el-form>
           <el-form v-if="dialogType === 'language'">
@@ -139,15 +151,28 @@
               <el-input v-model="dialogForm.language" placeholder="如 zh" />
             </el-form-item>
           </el-form>
+          <el-form v-if="dialogType === 'location'">
+            <el-form-item label="语言">
+              <el-input v-model="dialogForm.language" placeholder="如 zh" />
+            </el-form-item>
+          </el-form>
           <el-form v-if="dialogType === 'shell'">
             <el-form-item label="Adb 命令">
-              <el-input v-model="dialogForm.command" type="textarea" />
+              <el-input v-model="dialogForm.command" type="textarea" :rows="3" placeholder="例如：pm list packages" />
+            </el-form-item>
+            <el-form-item v-if="dialogResult" label="执行结果">
+              <pre class="shell-result">{{ dialogResult }}</pre>
             </el-form-item>
           </el-form>
           <template #footer>
             <el-button @click="dialogVisible = false">取消</el-button>
-            <el-button type="primary" @click="confirmDialog">确定</el-button>
+            <el-button type="primary" @click="confirmDialog" :loading="dialogLoading">确定</el-button>
           </template>
+        </el-dialog>
+
+        <!-- 剪贴板内容展示 -->
+        <el-dialog v-model="clipboardVisible" title="剪贴板内容" width="480px" align-center destroy-on-close>
+          <el-input v-model="clipboardData" type="textarea" :rows="6" readonly />
         </el-dialog>
       </el-tab-pane>
 
@@ -237,6 +262,11 @@ const dialogForm = reactive({
   language: '',
   command: ''
 })
+
+const dialogLoading = ref(false)
+const dialogResult = ref('')
+const clipboardVisible = ref(false)
+const clipboardData = ref('')
 
 const historyVisible = ref(false)
 const historyTitle = ref('')
@@ -405,10 +435,13 @@ function openDialog(type) {
     return
   }
   dialogType.value = type
+  dialogResult.value = ''
   if (type === 'clipboard') {
     dialogTitle.value = '设置剪贴板'
   } else if (type === 'language') {
     dialogTitle.value = '设置系统语言'
+  } else if (type === 'location') {
+    dialogTitle.value = 'IP 智能定位'
   } else if (type === 'shell') {
     dialogTitle.value = '执行 Adb 命令'
   }
@@ -420,15 +453,54 @@ async function confirmDialog() {
   if (dialogType.value === 'clipboard') {
     params.text = dialogForm.text
     await submitOp('SET_CLIPBOARD', params)
+    dialogVisible.value = false
   } else if (dialogType.value === 'language') {
     params.country = dialogForm.country
     params.language = dialogForm.language
     await submitOp('SET_LANGUAGE', params)
+    dialogVisible.value = false
+  } else if (dialogType.value === 'location') {
+    if (!dialogForm.language) {
+      ElMessage.warning('请输入语言参数')
+      return
+    }
+    params.language = dialogForm.language
+    await submitOp('REFRESH_LOCATION', params)
+    dialogVisible.value = false
   } else if (dialogType.value === 'shell') {
-    params.command = dialogForm.command
-    await submitOp('SHELL_ADB', params)
+    if (!dialogForm.command) {
+      ElMessage.warning('请输入 Adb 命令')
+      return
+    }
+    dialogLoading.value = true
+    try {
+      const res = await deviceApi.shell(deviceId, {
+        name: instanceName.value,
+        command: dialogForm.command
+      })
+      dialogResult.value = res.data || '执行成功，无返回'
+      ElMessage.success('命令执行成功')
+    } catch (e) {
+      dialogResult.value = '执行失败：' + (e.message || '未知错误')
+      ElMessage.error('命令执行失败')
+    } finally {
+      dialogLoading.value = false
+    }
   }
-  dialogVisible.value = false
+}
+
+async function submitClipboardGet() {
+  if (!instanceName.value) {
+    ElMessage.warning('请先选择容器名称')
+    return
+  }
+  try {
+    const res = await deviceApi.clipboardGet(deviceId, { name: instanceName.value })
+    clipboardData.value = res.data || '（空）'
+    clipboardVisible.value = true
+  } catch (e) {
+    ElMessage.error('获取剪贴板失败：' + (e.message || '未知错误'))
+  }
 }
 
 function openMetricHistory(item) {
@@ -486,11 +558,25 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.op-section {
-  margin-bottom: 20px;
+.op-card {
+  margin-bottom: var(--spacing-md);
 }
-.op-section h4 {
-  margin: 10px 0;
+.op-card-header {
+  font-weight: 600;
+}
+.op-buttons {
+  margin-top: var(--spacing-sm);
+}
+.shell-result {
+  background-color: #f5f7fa;
+  padding: var(--spacing-sm);
+  border-radius: var(--border-radius);
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
 }
 .android-card {
   margin-bottom: var(--spacing-md);
