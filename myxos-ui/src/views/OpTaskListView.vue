@@ -100,7 +100,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, Refresh, RefreshRight } from '@element-plus/icons-vue'
 import { opTaskApi, authApi } from '@/api'
-import { useUserStore } from '@/stores/user'
+import { useUserStore } from '@/store'
 import { formatDateTime } from '@/utils/date'
 
 const router = useRouter()
@@ -112,7 +112,7 @@ const logout = async () => {
   } catch (e) {
     // ignore
   }
-  userStore.clear()
+  userStore.clearUser()
   router.push('/login')
 }
 
