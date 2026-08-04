@@ -1,6 +1,12 @@
 <template>
   <div class="page-container">
-    <h2 class="page-title">任务队列</h2>
+    <div class="page-header">
+      <h2 class="page-title">任务队列</h2>
+      <div class="page-actions">
+        <span>{{ userStore.username }}</span>
+        <el-button type="primary" link @click="logout">登出</el-button>
+      </div>
+    </div>
 
     <div class="filter-card">
       <el-form :inline="true" :model="query" size="default">
@@ -31,18 +37,23 @@
       <el-table v-loading="loading" :data="tasks" size="small" stripe>
         <el-table-column prop="id" label="任务ID" width="90" />
         <el-table-column prop="deviceId" label="设备ID" width="90" />
-        <el-table-column prop="operationCode" label="操作" width="140" />
-        <el-table-column prop="source" label="来源" width="100" />
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="operationCode" label="操作" width="150" show-overflow-tooltip />
+        <el-table-column prop="source" label="来源" width="90" />
+        <el-table-column prop="status" label="状态" width="90">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="scheduledAt" label="计划时间" width="160" />
-        <el-table-column prop="finishedAt" label="完成时间" width="160" />
-        <el-table-column prop="resultMsg" label="结果" show-overflow-tooltip />
-        <el-table-column label="操作" width="90">
+        <el-table-column prop="scheduledAt" label="计划时间" width="160">
+          <template #default="{ row }">{{ formatDateTime(row.scheduledAt) }}</template>
+        </el-table-column>
+        <el-table-column prop="finishedAt" label="完成时间" width="160">
+          <template #default="{ row }">{{ formatDateTime(row.finishedAt) }}</template>
+        </el-table-column>
+        <el-table-column prop="resultMsg" label="结果" min-width="200" show-overflow-tooltip />
+        <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
+            <el-button size="small" link @click="openDetail(row)">详情</el-button>
             <el-button v-if="row.status === 'FAILED'" size="small" :icon="RefreshRight" @click="retry(row.id)">重试</el-button>
           </template>
         </el-table-column>
@@ -59,19 +70,59 @@
         />
       </div>
     </div>
+
+    <el-drawer v-model="detailVisible" title="任务详情" size="560px">
+      <el-descriptions v-if="currentTask" :column="1" border size="small">
+        <el-descriptions-item label="任务ID">{{ currentTask.id }}</el-descriptions-item>
+        <el-descriptions-item label="设备ID">{{ currentTask.deviceId }}</el-descriptions-item>
+        <el-descriptions-item label="操作">{{ currentTask.operationCode }}</el-descriptions-item>
+        <el-descriptions-item label="参数">
+          <pre class="json-preview">{{ formatJson(currentTask.params) }}</pre>
+        </el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag :type="statusType(currentTask.status)" size="small">{{ currentTask.status }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="重试次数">{{ currentTask.retryCount }} / {{ currentTask.maxRetry }}</el-descriptions-item>
+        <el-descriptions-item label="计划时间">{{ formatDateTime(currentTask.scheduledAt) }}</el-descriptions-item>
+        <el-descriptions-item label="开始时间">{{ formatDateTime(currentTask.startedAt) }}</el-descriptions-item>
+        <el-descriptions-item label="完成时间">{{ formatDateTime(currentTask.finishedAt) }}</el-descriptions-item>
+        <el-descriptions-item label="执行结果">
+          <pre class="json-preview">{{ currentTask.resultMsg }}</pre>
+        </el-descriptions-item>
+      </el-descriptions>
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, Refresh, RefreshRight } from '@element-plus/icons-vue'
-import { opTaskApi } from '@/api'
+import { opTaskApi, authApi } from '@/api'
+import { useUserStore } from '@/stores/user'
+import { formatDateTime } from '@/utils/date'
+
+const router = useRouter()
+const userStore = useUserStore()
+
+const logout = async () => {
+  try {
+    await authApi.logout()
+  } catch (e) {
+    // ignore
+  }
+  userStore.clear()
+  router.push('/login')
+}
 
 const tasks = reactive([])
 const total = ref(0)
 const loading = ref(false)
 const query = reactive({ status: '', source: '', page: 1, size: 20 })
+
+const detailVisible = ref(false)
+const currentTask = ref(null)
 
 const statusType = (status) => {
   switch (status) {
@@ -110,6 +161,25 @@ const retry = async (id) => {
   await opTaskApi.retry(id)
   ElMessage.success('已重试')
   load()
+}
+
+const openDetail = async (row) => {
+  try {
+    const res = await opTaskApi.detail(row.id)
+    currentTask.value = res.data
+    detailVisible.value = true
+  } catch (e) {
+    ElMessage.error('加载详情失败')
+  }
+}
+
+function formatJson(json) {
+  if (!json) return '-'
+  try {
+    return JSON.stringify(JSON.parse(json), null, 2)
+  } catch (e) {
+    return json
+  }
 }
 
 onMounted(load)
