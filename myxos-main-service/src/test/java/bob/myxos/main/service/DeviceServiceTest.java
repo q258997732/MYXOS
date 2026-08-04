@@ -110,7 +110,6 @@ class DeviceServiceTest {
         group.setId(1L);
         group.setDeleted(0);
         when(deviceGroupMapper.selectById(1L)).thenReturn(group);
-        when(deviceMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
         when(deviceMapper.insert(any(Device.class))).thenAnswer(inv -> {
             Device d = inv.getArgument(0);
             d.setId(100L);
@@ -133,12 +132,16 @@ class DeviceServiceTest {
     @DisplayName("创建设备失败：IP+端口已存在时抛出 BizException")
     void createDeviceFailsWhenDuplicate() {
         // Arrange
-        when(deviceMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+        DeviceGroup group = new DeviceGroup();
+        group.setId(1L);
+        group.setDeleted(0);
+        when(deviceGroupMapper.selectById(1L)).thenReturn(group);
+        when(deviceMapper.insert(any(Device.class))).thenThrow(new org.springframework.dao.DuplicateKeyException("Duplicate entry"));
 
         // Act & Assert
         BizException ex = assertThrows(BizException.class, () -> deviceService.createDevice(buildCreateReq()));
         assertTrue(ex.getMessage().contains("已存在"));
-        verify(deviceMapper, never()).insert(any(Device.class));
+        verify(deviceMapper).insert(any(Device.class));
     }
 
     @Test
