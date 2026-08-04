@@ -1,6 +1,8 @@
 <template>
-  <div class="page-container">
-    <h2 class="page-title">仪表盘</h2>
+  <div class="page-container dashboard-page">
+    <div class="page-header">
+      <h2 class="page-title">仪表盘</h2>
+    </div>
 
     <!-- 资源概览 -->
     <el-row :gutter="16" class="stats-row">
@@ -67,7 +69,7 @@
     </el-row>
 
     <!-- 最近事件 -->
-    <el-row :gutter="16" class="mt-16">
+    <el-row :gutter="16" class="mt-16 bottom-row">
       <el-col :xs="24" :lg="12">
         <el-card class="content-card" shadow="never">
           <template #header>
@@ -219,6 +221,12 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.dashboard-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
 .stats-row {
   margin-bottom: var(--spacing-md);
 }
@@ -231,13 +239,13 @@ onUnmounted(() => {
   border-radius: var(--border-radius);
   background: var(--card-bg);
   box-shadow: var(--shadow-sm);
-  border-left: 4px solid #409eff;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.stat-card.primary { border-left-color: #409eff; }
-.stat-card.success { border-left-color: #67c23a; }
-.stat-card.danger { border-left-color: #f56c6c; }
-.stat-card.warning { border-left-color: #e6a23c; }
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
 
 .stat-icon {
   width: 56px;
@@ -275,5 +283,32 @@ onUnmounted(() => {
 
 .chart-container {
   height: 280px;
+}
+
+.bottom-row {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-height: 360px;
+}
+
+.bottom-row .el-col {
+  display: flex;
+}
+
+.bottom-row .el-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.bottom-row :deep(.el-card__body) {
+  flex: 1;
+  overflow: hidden;
+  padding: 0;
+}
+
+.bottom-row .el-table {
+  height: 100%;
 }
 </style>

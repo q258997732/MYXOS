@@ -109,7 +109,12 @@
             </el-form-item>
 
             <el-form-item label="操作参数" v-if="action.actionType === 'OPERATION'">
-              <el-input v-model="action.operationParams" type="textarea" :rows="2" placeholder='{"name":"container_01"}' />
+              <el-input
+                v-model="action.operationParams"
+                type="textarea"
+                :rows="3"
+                placeholder='根据执行操作填写 JSON 参数，例如：&#10;启动/停止/重启/重置实例：{"name":"container_01"}&#10;重命名：{"name":"old","newName":"new"}&#10;设置剪贴板：{"name":"c1","text":"hello"}&#10;设置语言：{"name":"c1","country":"cn","language":"zh"}&#10;IP 定位：{"name":"c1","language":"zh"}&#10;执行命令：{"name":"c1","command":"pm list packages"}&#10;截图：{"name":"c1"}'
+              />
             </el-form-item>
 
             <el-form-item label="执行顺序">

@@ -41,7 +41,26 @@
                   <el-tag :type="androidStatusType(item.status)" size="small">{{ item.statusLabel }}</el-tag>
                 </div>
               </template>
-              <el-button size="small" type="primary" @click="selectInstance(item.name)">选择并操作</el-button>
+              <div class="android-meta">
+                <div v-if="item.image" class="android-meta-item">
+                  <el-icon><Picture /></el-icon>
+                  <span>镜像: {{ item.image }}</span>
+                </div>
+                <div v-if="item.ip" class="android-meta-item">
+                  <el-icon><MapLocation /></el-icon>
+                  <span>IP: {{ item.ip }}</span>
+                </div>
+                <div v-if="item.statusDetail" class="android-meta-item">
+                  <el-icon><InfoFilled /></el-icon>
+                  <span :title="item.statusDetail">{{ item.statusDetail }}</span>
+                </div>
+              </div>
+              <div class="android-actions">
+                <el-button size="small" type="primary" plain @click="quickScreenshot(item.name)">截图</el-button>
+                <el-button size="small" type="success" @click="quickOp('RUN_ANDROID', item.name)">启动</el-button>
+                <el-button size="small" type="danger" @click="quickOp('STOP_ANDROID', item.name)">停止</el-button>
+                <el-button size="small" type="warning" @click="quickOp('REBOOT_ANDROID', item.name)">重启</el-button>
+              </div>
             </el-card>
           </el-col>
         </el-row>
@@ -62,13 +81,16 @@
           </el-row>
 
           <h4 class="metric-section-title">安卓实例状态</h4>
-          <el-empty v-if="androidMetrics.length === 0" description="暂无安卓实例状态" />
+          <el-empty v-if="androids.length === 0" description="暂无安卓实例状态" />
           <el-row :gutter="16" v-else>
-            <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in androidMetrics" :key="item.metricType + item.extra">
-              <el-card class="metric-card" shadow="hover" @click="openMetricHistory(item)">
-                <div class="metric-title">{{ androidMetricTitle(item) }}</div>
-                <div class="metric-value">{{ formatMetricValue(item) }}</div>
-                <div class="metric-time">{{ formatDateTime(item.collectedAt) }}</div>
+            <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in androids" :key="item.name">
+              <el-card class="metric-card android-status-card" shadow="hover" @click="selectInstance(item.name)">
+                <div class="android-status-header">
+                  <el-tag :type="androidStatusType(item.status)" size="small">{{ item.statusLabel }}</el-tag>
+                  <span class="android-status-name" :title="item.name">{{ item.name }}</span>
+                </div>
+                <div class="android-status-detail" v-if="item.statusDetail">{{ item.statusDetail }}</div>
+                <div class="metric-time" v-if="item.image">镜像: {{ item.image }}</div>
               </el-card>
             </el-col>
           </el-row>
@@ -76,64 +98,58 @@
       </el-tab-pane>
 
       <el-tab-pane label="手动操作" name="ops">
-        <!-- 主机级 -->
+        <!-- 主机操作（3588） -->
         <el-card class="op-card" shadow="never">
-          <template #header><div class="op-card-header">主机操作</div></template>
-          <el-alert type="info" :closable="false" show-icon title="主机级操作会影响整台设备">
-            以下操作针对当前设备（{{ device.ip }}:{{ device.port }}）本身执行。
+          <template #header>
+            <div class="op-card-header">主机操作（3588）</div>
+          </template>
+          <el-alert type="info" :closable="false" show-icon title="主机级操作会影响整台 3588 设备及其安卓实例">
+            请选择目标实例后执行对应操作。
           </el-alert>
-          <el-button-group class="op-buttons">
-            <el-button type="danger" plain @click="submitOp('REBOOT_HOST')">重启主机</el-button>
-          </el-button-group>
+          <el-form inline class="op-form">
+            <el-form-item label="实例名称">
+              <el-select v-model="instanceName" placeholder="请选择实例" filterable style="width: 260px">
+                <el-option v-for="item in androids" :key="item.name" :label="item.name" :value="item.name" />
+              </el-select>
+            </el-form-item>
+          </el-form>
+          <div class="op-buttons">
+            <el-button type="danger" @click="submitOp('REBOOT_HOST')">重启主机</el-button>
+            <el-button type="success" @click="submitAndroidOp('RUN_ANDROID')">启动安卓</el-button>
+            <el-button type="info" @click="submitAndroidOp('STOP_ANDROID')">停止安卓</el-button>
+            <el-button type="warning" @click="submitAndroidOp('REBOOT_ANDROID')">重启安卓</el-button>
+          </div>
         </el-card>
 
-        <!-- 安卓容器级 -->
+        <!-- 实例操作 -->
         <el-card class="op-card" shadow="never">
-          <template #header><div class="op-card-header">安卓容器操作</div></template>
-          <el-alert type="info" :closable="false" show-icon title="容器级操作会改变容器的运行状态">
-            请选择下方容器，然后执行启动、停止、重启、重置或重命名。
+          <template #header>
+            <div class="op-card-header">实例操作</div>
+          </template>
+          <el-alert type="info" :closable="false" show-icon title="实例级操作针对运行中的安卓系统">
+            请选择实例后执行截图、剪贴板、语言设置、IP 定位或 Adb 命令。
           </el-alert>
-          <el-form inline>
-            <el-form-item label="容器名称">
-              <el-select v-model="instanceName" placeholder="请选择容器" filterable style="width: 220px">
+          <el-form inline class="op-form">
+            <el-form-item label="实例名称">
+              <el-select v-model="instanceName" placeholder="请选择实例" filterable style="width: 260px">
                 <el-option v-for="item in androids" :key="item.name" :label="item.name" :value="item.name" />
               </el-select>
             </el-form-item>
             <el-form-item label="新名称" v-if="showRename">
-              <el-input v-model="newInstanceName" placeholder="重命名时填写" style="width: 200px;" />
+              <el-input v-model="newInstanceName" placeholder="重命名时填写" style="width: 220px;" />
             </el-form-item>
           </el-form>
-          <el-button-group class="op-buttons">
-            <el-button @click="submitAndroidOp('RUN_ANDROID')">启动容器</el-button>
-            <el-button @click="submitAndroidOp('STOP_ANDROID')">停止容器</el-button>
-            <el-button @click="submitAndroidOp('REBOOT_ANDROID')">重启容器</el-button>
-            <el-button type="warning" plain @click="submitAndroidOp('RESET_ANDROID')">重置容器</el-button>
+          <div class="op-buttons">
+            <el-button @click="submitAndroidOp('RESET_ANDROID')">重置实例</el-button>
             <el-button v-if="!showRename" @click="showRename = true">重命名</el-button>
             <el-button v-else type="primary" @click="submitAndroidOp('RENAME_ANDROID')">确认重命名</el-button>
-          </el-button-group>
-        </el-card>
-
-        <!-- 安卓实例级 -->
-        <el-card class="op-card" shadow="never">
-          <template #header><div class="op-card-header">安卓实例操作</div></template>
-          <el-alert type="info" :closable="false" show-icon title="实例级操作针对运行中的安卓系统">
-            请选择容器后执行截图、剪贴板、语言设置、IP 定位或 Adb 命令。
-          </el-alert>
-          <el-form inline>
-            <el-form-item label="容器名称">
-              <el-select v-model="instanceName" placeholder="请选择容器" filterable style="width: 220px">
-                <el-option v-for="item in androids" :key="item.name" :label="item.name" :value="item.name" />
-              </el-select>
-            </el-form-item>
-          </el-form>
-          <el-button-group class="op-buttons">
-            <el-button @click="submitScreenshot">截图（临时查看）</el-button>
+            <el-button type="primary" plain @click="submitScreenshot">截图（临时查看）</el-button>
             <el-button @click="openDialog('clipboard')">设置剪贴板</el-button>
             <el-button @click="submitClipboardGet">获取剪贴板</el-button>
             <el-button @click="openDialog('language')">设置语言</el-button>
             <el-button @click="openDialog('location')">IP 智能定位</el-button>
             <el-button @click="openDialog('shell')">执行 Adb 命令</el-button>
-          </el-button-group>
+          </div>
         </el-card>
 
         <!-- 截图临时预览 -->
@@ -205,10 +221,17 @@
 
       <el-tab-pane label="任务记录" name="tasks">
         <el-table :data="tasks" size="small" stripe>
-          <el-table-column prop="operationCode" label="操作" />
-          <el-table-column prop="status" label="状态" />
-          <el-table-column prop="resultMsg" label="结果" />
-          <el-table-column label="完成时间">
+          <el-table-column prop="operationCode" label="操作" width="140" show-overflow-tooltip />
+          <el-table-column label="参数" min-width="160" show-overflow-tooltip>
+            <template #default="{ row }">{{ formatTaskParams(row.params) }}</template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="90">
+            <template #default="{ row }">
+              <el-tag :type="taskStatusType(row.status)" size="small">{{ row.status }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="resultMsg" label="结果" min-width="200" show-overflow-tooltip />
+          <el-table-column label="完成时间" width="160">
             <template #default="{ row }">{{ formatDateTime(row.finishedAt) }}</template>
           </el-table-column>
         </el-table>
@@ -241,7 +264,7 @@
 import { reactive, ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Cellphone } from '@element-plus/icons-vue'
+import { Cellphone, Picture, MapLocation, InfoFilled } from '@element-plus/icons-vue'
 import { deviceApi, authApi } from '@/api'
 import { useUserStore } from '@/store'
 import DeviceStatusTag from '@/components/DeviceStatusTag.vue'
@@ -358,30 +381,12 @@ async function loadTasks() {
 }
 
 const hostMetrics = computed(() => latestMetrics.filter(m => m.metricType !== 'ANDROID_STATUS'))
-const androidMetrics = computed(() => latestMetrics.filter(m => m.metricType === 'ANDROID_STATUS'))
-
-function androidMetricTitle(item) {
-  try {
-    const extra = JSON.parse(item.extra)
-    return (extra.name || '未知容器') + ' 状态'
-  } catch (e) {
-    return '安卓实例状态'
-  }
-}
 
 function metricLabel(type) {
   return METRIC_LABELS[type] || type
 }
 
 function formatMetricValue(item) {
-  if (item.metricType === 'ANDROID_STATUS' && item.extra) {
-    try {
-      const extra = JSON.parse(item.extra)
-      return `${extra.name || '-'}: ${item.metricValue}`
-    } catch (e) {
-      return item.metricValue
-    }
-  }
   return item.metricValue || '-'
 }
 
@@ -391,15 +396,52 @@ function androidStatusType(status) {
   return 'info'
 }
 
+function taskStatusType(status) {
+  switch (status) {
+    case 'SUCCESS': return 'success'
+    case 'FAILED': return 'danger'
+    case 'RUNNING': return 'primary'
+    default: return 'info'
+  }
+}
+
+function formatTaskParams(params) {
+  if (!params) return '-'
+  try {
+    const p = JSON.parse(params)
+    const parts = []
+    if (p.name) parts.push(`实例: ${p.name}`)
+    if (p.text) parts.push(`文本: ${p.text}`)
+    if (p.command) parts.push(`命令: ${p.command}`)
+    if (p.country) parts.push(`国家: ${p.country}`)
+    if (p.language) parts.push(`语言: ${p.language}`)
+    if (p.newName) parts.push(`新名称: ${p.newName}`)
+    return parts.join(' | ') || params
+  } catch (e) {
+    return params
+  }
+}
+
 function selectInstance(name) {
   instanceName.value = name
   activeTab.value = 'ops'
-  ElMessage.success(`已选择容器：${name}`)
+  ElMessage.success(`已选择实例：${name}`)
+}
+
+async function quickOp(code, name) {
+  instanceName.value = name
+  await submitOp(code, { name })
+}
+
+async function quickScreenshot(name) {
+  instanceName.value = name
+  await submitScreenshot()
 }
 
 async function submitOp(code, params = {}) {
   await deviceApi.ops(deviceId, { operationCode: code, params })
   ElMessage.success('任务已提交')
+  await loadTasks()
 }
 
 async function submitAndroidOp(code) {
@@ -558,6 +600,7 @@ function startRefresh() {
   refreshTimer = setInterval(() => {
     if (activeTab.value === 'metrics') {
       loadMetrics()
+      loadAndroids()
     }
   }, 5000)
 }
@@ -586,13 +629,23 @@ onUnmounted(() => {
 
 <style scoped>
 .op-card {
-  margin-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
 }
 .op-card-header {
   font-weight: 600;
 }
+.op-form {
+  margin-top: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+}
 .op-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
   margin-top: var(--spacing-sm);
+}
+.op-buttons .el-button {
+  margin-left: 0 !important;
 }
 .shell-result {
   background-color: #f5f7fa;
@@ -621,6 +674,29 @@ onUnmounted(() => {
   white-space: nowrap;
   font-weight: 600;
 }
+.android-meta {
+  margin-bottom: var(--spacing-md);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.android-meta-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-xs);
+  line-height: 1.5;
+}
+.android-meta-item span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.android-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
 .metric-card {
   margin-bottom: var(--spacing-md);
   border-radius: var(--border-radius);
@@ -629,6 +705,31 @@ onUnmounted(() => {
 }
 .metric-card:hover {
   transform: translateY(-2px);
+}
+.android-status-card {
+  padding-top: var(--spacing-sm);
+}
+.android-status-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+.android-status-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 14px;
+}
+.android-status-detail {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .metric-title {
   font-size: 13px;

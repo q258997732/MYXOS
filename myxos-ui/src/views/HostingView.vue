@@ -110,31 +110,32 @@
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="tasks" size="small" stripe
->
-        <el-table-column prop="cidr" label="CIDR" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="portFrom" label="起始端口" width="90" />
-        <el-table-column prop="portTo" label="结束端口" width="90" />
-        <el-table-column label="进度" width="180">
+      <el-table v-loading="loading" :data="tasks" size="small" stripe>
+        <el-table-column prop="cidr" label="CIDR" width="120" show-overflow-tooltip />
+        <el-table-column prop="portFrom" label="起始端口" width="85" />
+        <el-table-column prop="portTo" label="结束端口" width="85" />
+        <el-table-column label="进度" width="140">
           <template #default="{ row }">
-            <el-progress :percentage="progressPercent(row)" :stroke-width="12" />
-            <div class="table-progress-text">{{ row.scannedIpCount }} / {{ row.totalIpCount }}</div>
+            <div class="progress-cell">
+              <el-progress :percentage="progressPercent(row)" :stroke-width="10" />
+              <span class="progress-text">{{ row.scannedIpCount }} / {{ row.totalIpCount }}</span>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="90">
+        <el-table-column prop="status" label="状态" width="85">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="foundCount" label="新增" width="80" />
-        <el-table-column prop="message" label="结果" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="startedAt" label="开始时间" width="160">
+        <el-table-column prop="foundCount" label="新增" width="70" />
+        <el-table-column prop="message" label="结果" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="startedAt" label="开始时间" width="150">
           <template #default="{ row }">{{ formatDateTime(row.startedAt) }}</template>
         </el-table-column>
-        <el-table-column prop="finishedAt" label="完成时间" width="160">
+        <el-table-column prop="finishedAt" label="完成时间" width="150">
           <template #default="{ row }">{{ formatDateTime(row.finishedAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="110" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="openDetail(row)">详情</el-button>
             <el-button type="danger" link size="small" @click="remove(row.id)">删除</el-button>
@@ -424,16 +425,31 @@ onUnmounted(() => {
   font-size: 13px;
   color: var(--text-secondary);
 }
-.table-progress-text {
-  font-size: 12px;
+.progress-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.progress-cell :deep(.el-progress) {
+  width: 100%;
+}
+.progress-text {
+  font-size: 11px;
   color: var(--text-muted);
-  text-align: right;
-  margin-top: 2px;
+  line-height: 1;
 }
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-weight: 600;
+}
+.table-progress-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: right;
+  margin-top: 2px;
 }
 </style>
