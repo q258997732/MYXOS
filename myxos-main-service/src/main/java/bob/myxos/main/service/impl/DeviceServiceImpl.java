@@ -498,4 +498,33 @@ public class DeviceServiceImpl implements DeviceService {
         }
         return names;
     }
+
+    @Override
+    public String executeShell(Long id, String name, String command) {
+        Device device = getDetail(id);
+        MytosClient client = clientFactory.create(device.getIp(), device.getPort());
+        ShellResp resp = client.shell(device.getIp(), name, command);
+        if (resp == null || resp.getData() == null) {
+            return "";
+        }
+        JsonNode data = resp.getData();
+        if (data.has("output")) {
+            return data.get("output").asText("");
+        }
+        if (data.has("result")) {
+            return data.get("result").asText("");
+        }
+        return data.toString();
+    }
+
+    @Override
+    public String getClipboard(Long id, String name) {
+        Device device = getDetail(id);
+        MytosClient client = clientFactory.create(device.getIp(), device.getPort());
+        ClipboardResp resp = client.clipboardGet(device.getIp(), name);
+        if (resp == null || resp.getData() == null) {
+            return "";
+        }
+        return resp.getData();
+    }
 }

@@ -276,6 +276,40 @@ public class DeviceController {
     }
 
     /**
+     * 同步执行 Adb shell 命令
+     *
+     * @param id      设备 ID
+     * @param name    安卓容器名称
+     * @param command shell 命令
+     * @return 命令执行输出
+     */
+    @PostMapping("/{id}/shell")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public Result<String> shell(@PathVariable Long id,
+                                   @RequestParam @NotBlank(message = "容器名称不能为空")
+                                   @Pattern(regexp = "^[A-Za-z0-9_.-]{1,64}$", message = "容器名称包含非法字符")
+                                   String name,
+                                   @RequestBody @NotBlank(message = "命令不能为空") String command) {
+        return Result.ok(deviceService.executeShell(id, name, command));
+    }
+
+    /**
+     * 同步获取剪贴板内容
+     *
+     * @param id   设备 ID
+     * @param name 安卓容器名称
+     * @return 剪贴板文本内容
+     */
+    @GetMapping("/{id}/clipboard")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public Result<String> clipboard(@PathVariable Long id,
+                                       @RequestParam @NotBlank(message = "容器名称不能为空")
+                                       @Pattern(regexp = "^[A-Za-z0-9_.-]{1,64}$", message = "容器名称包含非法字符")
+                                       String name) {
+        return Result.ok(deviceService.getClipboard(id, name));
+    }
+
+    /**
      * 将 MyBatis-Plus Page 转换为通用分页结果
      */
     private <T> PageResult<T> toPageResult(Page<T> page) {

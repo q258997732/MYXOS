@@ -156,4 +156,23 @@ public interface DeviceService {
      * @return 运维任务分页结果
      */
     Page<OpTask> listOpTasks(Long id, Long page, Long size);
+
+    /**
+     * 同步执行 Adb shell 命令并返回结果
+     *
+     * @param id      设备 ID
+     * @param name    安卓容器名称
+     * @param command shell 命令
+     * @return 命令执行输出
+     */
+    String executeShell(Long id, String name, String command);
+
+    /**
+     * 同步获取剪贴板内容
+     *
+     * @param id   设备 ID
+     * @param name 安卓容器名称
+     * @return 剪贴板文本内容
+     */
+    String getClipboard(Long id, String name);
 }
