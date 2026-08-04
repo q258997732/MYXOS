@@ -64,18 +64,13 @@ public class DeviceServiceImpl implements DeviceService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Device createDevice(DeviceCreateReq req) {
-        // 校验 IP+端口 唯一
-        Long count = deviceMapper.selectCount(
-                new LambdaQueryWrapper<Device>()
-                        .eq(Device::getIp, req.getIp())
-                        .eq(Device::getPort, req.getPort())
-                        .eq(Device::getDeleted, 0));
-        if (count != null && count > 0) {
-            throw new BizException("该 IP 和端口已存在");
-        }
         validateGroupId(req.getGroupId());
         Device device = new Device();
-        device.setName(req.getName());
+        String name = req.getName();
+        if (name == null || name.trim().isEmpty()) {
+            name = req.getIp() + ":" + req.getPort();
+        }
+        device.setName(name);
         device.setIp(req.getIp());
         device.setPort(req.getPort());
         device.setMode(req.getMode());
@@ -83,8 +78,23 @@ public class DeviceServiceImpl implements DeviceService {
         device.setRemark(req.getRemark());
         device.setStatus(DeviceStatus.UNKNOWN.name());
         device.setSource("MANUAL");
-        deviceMapper.insert(device);
+        try {
+            deviceMapper.insert(device);
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            throw new BizException("该 IP 和端口已存在");
+        }
+        writeActionLog(device, "手动添加设备：" + device.getName() + "(" + device.getIp() + ":" + device.getPort() + ")");
         return device;
+    }
+
+    private void writeActionLog(Device device, String message) {
+        ActionLog log = new ActionLog();
+        log.setDeviceId(device.getId());
+        log.setActionType("SYSTEM");
+        log.setLogLevel("INFO");
+        log.setMessage(message);
+        log.setCreatedAt(LocalDateTime.now());
+        actionLogMapper.insert(log);
     }
 
     private void validateGroupId(Long groupId) {

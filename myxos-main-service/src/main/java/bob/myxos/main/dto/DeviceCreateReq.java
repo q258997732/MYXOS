@@ -16,7 +16,6 @@ import javax.validation.constraints.Size;
 public class DeviceCreateReq {
 
     /** 设备名称 */
-    @NotBlank(message = "设备名称不能为空")
     @Size(max = 64, message = "设备名称长度不能超过 64")
     private String name;
 
