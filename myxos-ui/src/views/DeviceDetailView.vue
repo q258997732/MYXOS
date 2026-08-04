@@ -343,7 +343,11 @@ const METRIC_LABELS = {
   TEMP: '温度',
   UPTIME: '运行时长',
   VERSION: '版本号',
-  ANDROID_STATUS: '安卓实例状态'
+  ANDROID_STATUS: '安卓实例状态',
+  ONLINE: '设备在线',
+  OFFLINE: '设备离线',
+  ANDROID_ONLINE: '安卓实例在线数',
+  ANDROID_OFFLINE: '安卓实例离线数'
 }
 
 let refreshTimer = null

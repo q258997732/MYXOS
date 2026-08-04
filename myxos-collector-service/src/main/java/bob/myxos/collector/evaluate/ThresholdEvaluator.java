@@ -70,14 +70,13 @@ public class ThresholdEvaluator {
 
     /**
      * 对单条快照进行判定
+     * <p>
+     * 数值规则使用 {@link MetricSnapshot#getMetricNum()}，
+     * 字符规则（thresholdText 非空）使用 {@link MetricSnapshot#getMetricValue()} 进行比较
      */
     private void evaluateOne(Device device, MetricSnapshot snapshot) {
         List<RuleCache.RuleWithActions> rules = ruleCache.getByMetricType(snapshot.getMetricType());
         if (rules.isEmpty()) {
-            return;
-        }
-        BigDecimal currentValue = snapshot.getMetricNum();
-        if (currentValue == null) {
             return;
         }
         for (RuleCache.RuleWithActions rwa : rules) {
@@ -86,9 +85,9 @@ public class ThresholdEvaluator {
                 if (!matchScope(rule, device)) {
                     continue;
                 }
-                boolean breached = isBreached(rule, device, currentValue);
+                boolean breached = isBreached(rule, device, snapshot);
                 if (breached) {
-                    onBreach(rule, rwa.getActions(), device, currentValue);
+                    onBreach(rule, rwa.getActions(), device, displayValue(rule, snapshot));
                 } else {
                     onRecover(rule, device);
                 }
@@ -99,7 +98,26 @@ public class ThresholdEvaluator {
     }
 
     /**
+     * 计算告警展示用指标值：字符规则取字符串值，数值规则取数值文本
+     */
+    private String displayValue(ThresholdRule rule, MetricSnapshot snapshot) {
+        if (isStringRule(rule)) {
+            return snapshot.getMetricValue();
+        }
+        return snapshot.getMetricNum() == null ? null : snapshot.getMetricNum().toPlainString();
+    }
+
+    /**
+     * 是否为字符判断规则（thresholdText 非空）
+     */
+    private boolean isStringRule(ThresholdRule rule) {
+        return rule.getThresholdText() != null && !rule.getThresholdText().isEmpty();
+    }
+
+    /**
      * 判断规则作用范围是否覆盖当前设备
+     * <p>
+     * scopeType=DEVICE 时优先匹配 scopeIds（逗号分隔多设备），为空则回退匹配 scopeId
      *
      * @param rule   规则
      * @param device 设备
@@ -110,12 +128,29 @@ public class ThresholdEvaluator {
         if (ScopeType.ALL.name().equals(scopeType)) {
             return true;
         }
-        // scopeId 为 null 时按 0 处理，避免 NPE
-        long scopeId = rule.getScopeId() == null ? 0L : rule.getScopeId();
         if (ScopeType.DEVICE.name().equals(scopeType)) {
-            return device.getId() != null && device.getId() == scopeId;
+            if (device.getId() == null) {
+                return false;
+            }
+            String scopeIds = rule.getScopeIds();
+            if (scopeIds != null && !scopeIds.trim().isEmpty()) {
+                for (String part : scopeIds.split(",")) {
+                    try {
+                        if (Long.parseLong(part.trim()) == device.getId()) {
+                            return true;
+                        }
+                    } catch (NumberFormatException ignored) {
+                        // 忽略非法片段，继续匹配其余 ID
+                    }
+                }
+                return false;
+            }
+            long scopeId = rule.getScopeId() == null ? 0L : rule.getScopeId();
+            return device.getId() == scopeId;
         }
         if (ScopeType.GROUP.name().equals(scopeType)) {
+            // scopeId 为 null 时按 0 处理，避免 NPE
+            long scopeId = rule.getScopeId() == null ? 0L : rule.getScopeId();
             return device.getGroupId() != null && device.getGroupId() == scopeId;
         }
         return false;
@@ -153,16 +188,44 @@ public class ThresholdEvaluator {
     }
 
     /**
-     * 根据触发模式判断是否真正 breach
+     * 字符串比较（字符判断）
+     *
+     * @param value  当前字符串值
+     * @param target 目标字符串
+     * @param op     比较操作（EQ / NE / CONTAINS）
+     * @return true 表示满足条件（breach）
      */
-    private boolean isBreached(ThresholdRule rule, Device device, BigDecimal currentValue) {
+    boolean compareText(String value, String target, CompareOp op) {
+        if (value == null || target == null || op == null) {
+            return false;
+        }
+        switch (op) {
+            case EQ:
+                return value.trim().equals(target.trim());
+            case NE:
+                return !value.trim().equals(target.trim());
+            case CONTAINS:
+                return value.contains(target);
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * 根据触发模式判断是否真正 breach
+     * <p>
+     * 字符规则（thresholdText 非空）按字符串比较，数值规则按 BigDecimal 比较
+     */
+    private boolean isBreached(ThresholdRule rule, Device device, MetricSnapshot snapshot) {
         CompareOp op = parseCompareOp(rule.getCompareOp());
         if (op == null) {
             log.warn("未知的比较操作：ruleId={}, compareOp={}", rule.getId(), rule.getCompareOp());
             return false;
         }
-        BigDecimal threshold = rule.getThresholdValue();
-        boolean currentBreach = compare(currentValue, threshold, op);
+        boolean stringRule = isStringRule(rule);
+        boolean currentBreach = stringRule
+                ? compareText(snapshot.getMetricValue(), rule.getThresholdText(), op)
+                : compare(snapshot.getMetricNum(), rule.getThresholdValue(), op);
         if (!currentBreach) {
             return false;
         }
@@ -179,7 +242,9 @@ public class ThresholdEvaluator {
             if (recent == null || recent.isEmpty()) {
                 return false;
             }
-            return recent.stream().allMatch(s -> compare(s.getMetricNum(), threshold, op));
+            return recent.stream().allMatch(s -> stringRule
+                    ? compareText(s.getMetricValue(), rule.getThresholdText(), op)
+                    : compare(s.getMetricNum(), rule.getThresholdValue(), op));
         }
         if (TRIGGER_MODE_CONSECUTIVE.equals(triggerMode)) {
             int count = rule.getConsecutiveCount() == null ? 0 : rule.getConsecutiveCount();
@@ -191,7 +256,9 @@ public class ThresholdEvaluator {
             if (recent == null || recent.size() < count) {
                 return false;
             }
-            return recent.stream().allMatch(s -> compare(s.getMetricNum(), threshold, op));
+            return recent.stream().allMatch(s -> stringRule
+                    ? compareText(s.getMetricValue(), rule.getThresholdText(), op)
+                    : compare(s.getMetricNum(), rule.getThresholdValue(), op));
         }
         // 未识别模式按即时触发处理
         return true;
@@ -199,8 +266,10 @@ public class ThresholdEvaluator {
 
     /**
      * breach 时的处理：插入或更新 FIRING 告警，并执行动作
+     *
+     * @param displayValue 告警展示用指标值（数值文本或字符串值）
      */
-    private void onBreach(ThresholdRule rule, List<ThresholdAction> actions, Device device, BigDecimal currentValue) {
+    private void onBreach(ThresholdRule rule, List<ThresholdAction> actions, Device device, String displayValue) {
         AlarmEvent firing = alarmEventMapper.selectFiringByRuleAndDevice(rule.getId(), device.getId());
         LocalDateTime now = LocalDateTime.now();
         Long alarmId;
@@ -209,14 +278,16 @@ public class ThresholdEvaluator {
             alarm.setRuleId(rule.getId());
             alarm.setDeviceId(device.getId());
             alarm.setMetricType(rule.getMetricType());
-            alarm.setMetricValue(currentValue == null ? null : currentValue.toPlainString());
-            alarm.setThresholdValue(rule.getThresholdValue() == null ? null : rule.getThresholdValue().toPlainString());
+            alarm.setMetricValue(displayValue);
+            alarm.setThresholdValue(rule.getThresholdValue() == null
+                    ? rule.getThresholdText()
+                    : rule.getThresholdValue().toPlainString());
             alarm.setFiredAt(now);
             alarm.setStatus(ALARM_STATUS_FIRING);
             alarmEventMapper.insert(alarm);
             alarmId = alarm.getId();
         } else {
-            firing.setMetricValue(currentValue == null ? null : currentValue.toPlainString());
+            firing.setMetricValue(displayValue);
             firing.setFiredAt(now);
             alarmEventMapper.updateById(firing);
             alarmId = firing.getId();

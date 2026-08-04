@@ -15,5 +15,7 @@ public enum CompareOp {
     /** 等于 */
     EQ,
     /** 不等于 */
-    NE
+    NE,
+    /** 包含（仅用于字符判断） */
+    CONTAINS
 }

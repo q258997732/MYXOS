@@ -9,10 +9,14 @@
     <el-card class="content-card" shadow="never">
       <el-table :data="rules" stripe size="default">
         <el-table-column prop="name" label="规则名称" />
-        <el-table-column prop="metricType" label="指标类型" width="120" />
-        <el-table-column label="条件" width="160">
+        <el-table-column label="指标类型" width="140">
           <template #default="scope">
-            <span>{{ opText(scope.row.compareOp) }} {{ scope.row.thresholdValue }}</span>
+            <span>{{ metricLabel(scope.row.metricType) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="条件" width="200">
+          <template #default="scope">
+            <span>{{ conditionText(scope.row) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="作用范围" width="160">
@@ -60,6 +64,31 @@ function edit(id) {
   router.push(`/thresholds/edit/${id}`)
 }
 
+const METRIC_LABELS = {
+  CPU: 'CPU 使用率',
+  MEM: '内存使用率',
+  DISK: '磁盘使用率',
+  NET_RX: '网络接收速率',
+  NET_TX: '网络发送速率',
+  TEMP: '温度',
+  CUSTOM: '自定义指标',
+  ONLINE: '设备在线',
+  OFFLINE: '设备离线',
+  ANDROID_ONLINE: '安卓实例在线数',
+  ANDROID_OFFLINE: '安卓实例离线数',
+  ANDROID_STATUS: '安卓实例状态'
+}
+
+function metricLabel(type) {
+  return METRIC_LABELS[type] || type
+}
+
+function conditionText(row) {
+  if (row.conditionType === 'NONE') return '检测到即触发'
+  if (row.conditionType === 'STRING') return `${opText(row.compareOp)} "${row.thresholdText}"`
+  return `${opText(row.compareOp)} ${row.thresholdValue}`
+}
+
 function opText(op) {
   const map = {
     GT: '大于',
@@ -67,7 +96,8 @@ function opText(op) {
     LT: '小于',
     LTE: '小于等于',
     EQ: '等于',
-    NE: '不等于'
+    NE: '不等于',
+    CONTAINS: '包含'
   }
   return map[op] || op
 }
@@ -75,7 +105,13 @@ function opText(op) {
 function scopeText(row) {
   if (row.scopeType === 'ALL') return '全部设备'
   if (row.scopeType === 'GROUP') return `分组 ${row.scopeId}`
-  if (row.scopeType === 'DEVICE') return `设备 ${row.scopeId}`
+  if (row.scopeType === 'DEVICE') {
+    if (row.scopeIds) {
+      const count = row.scopeIds.split(',').filter(s => s.trim()).length
+      return count > 1 ? `设备 × ${count}` : `设备 ${row.scopeIds}`
+    }
+    return `设备 ${row.scopeId}`
+  }
   return row.scopeType
 }
 

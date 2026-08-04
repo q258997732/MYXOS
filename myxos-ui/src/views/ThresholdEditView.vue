@@ -21,7 +21,37 @@
         </el-form-item>
 
         <el-form-item label="触发条件" required>
-          <div class="condition-row">
+          <!-- 状态类指标：可无需条件（检测到即触发），也可按数值判断 -->
+          <div v-if="isStateMetric" class="condition-block">
+            <el-radio-group v-model="form.conditionType">
+              <el-radio-button label="NONE">无需条件（检测到即触发）</el-radio-button>
+              <el-radio-button label="NUMERIC">数值判断</el-radio-button>
+            </el-radio-group>
+            <div v-if="form.conditionType === 'NUMERIC'" class="condition-row condition-sub-row">
+              <el-select v-model="form.compareOp" style="width: 120px">
+                <el-option label="大于" value="GT" />
+                <el-option label="大于等于" value="GTE" />
+                <el-option label="小于" value="LT" />
+                <el-option label="小于等于" value="LTE" />
+                <el-option label="等于" value="EQ" />
+                <el-option label="不等于" value="NE" />
+              </el-select>
+              <el-input-number v-model="form.thresholdValue" :precision="2" style="flex: 1; margin-left: 8px" />
+              <span class="unit-text">{{ metricUnit(form.metricType) }}</span>
+            </div>
+            <div v-else class="hint-text condition-sub-row">检测到「{{ metricLabel(form.metricType) }}」对应状态即触发，状态恢复后告警自动解除</div>
+          </div>
+          <!-- 字符类指标：按字符串比较 -->
+          <div v-else-if="isStringMetric" class="condition-row">
+            <el-select v-model="form.compareOp" style="width: 120px">
+              <el-option label="等于" value="EQ" />
+              <el-option label="不等于" value="NE" />
+              <el-option label="包含" value="CONTAINS" />
+            </el-select>
+            <el-input v-model="form.thresholdText" placeholder="目标文本，如 STOPPED" maxlength="255" style="flex: 1; margin-left: 8px" />
+          </div>
+          <!-- 数值指标：按数值比较 -->
+          <div v-else class="condition-row">
             <el-select v-model="form.compareOp" style="width: 120px">
               <el-option label="大于" value="GT" />
               <el-option label="大于等于" value="GTE" />
@@ -67,7 +97,8 @@
         </el-form-item>
 
         <el-form-item label="选择设备" v-if="form.scopeType === 'DEVICE'" required>
-          <el-select v-model="form.scopeId" placeholder="请选择设备" filterable style="width: 100%">
+          <el-select v-model="form.scopeIds" multiple collapse-tags collapse-tags-tooltip
+            placeholder="请选择设备（可多选）" filterable style="width: 100%">
             <el-option v-for="d in devices" :key="d.id" :label="`${d.name || d.ip} (${d.ip}:${d.port})`" :value="d.id" />
           </el-select>
         </el-form-item>
@@ -108,12 +139,16 @@
               </el-select>
             </el-form-item>
 
-            <el-form-item label="操作参数" v-if="action.actionType === 'OPERATION'">
+            <el-form-item v-if="action.actionType === 'OPERATION'">
+              <template #label>
+                操作参数
+                <el-button type="primary" link :icon="QuestionFilled" @click="paramHelpVisible = true">参数示例</el-button>
+              </template>
               <el-input
                 v-model="action.operationParams"
                 type="textarea"
                 :rows="3"
-                placeholder='根据执行操作填写 JSON 参数，例如：&#10;启动/停止/重启/重置实例：{"name":"container_01"}&#10;重命名：{"name":"old","newName":"new"}&#10;设置剪贴板：{"name":"c1","text":"hello"}&#10;设置语言：{"name":"c1","country":"cn","language":"zh"}&#10;IP 定位：{"name":"c1","language":"zh"}&#10;执行命令：{"name":"c1","command":"pm list packages"}&#10;截图：{"name":"c1"}'
+                :placeholder="paramPlaceholder(action.operationCode)"
               />
             </el-form-item>
 
@@ -131,14 +166,29 @@
         </el-form-item>
       </el-form>
     </el-card>
+
+    <!-- 操作参数示例弹窗 -->
+    <el-dialog v-model="paramHelpVisible" title="操作参数示例" width="680px" align-center append-to-body>
+      <el-alert type="info" :closable="false" show-icon class="param-help-tip"
+        title="操作参数为 JSON 字符串；name 为安卓容器名称，REBOOT_HOST 等主机级操作无需参数填 {} 即可" />
+      <el-table :data="paramHelpList" size="small" stripe>
+        <el-table-column prop="label" label="执行操作" width="130" />
+        <el-table-column prop="example" label="参数 JSON 示例" min-width="260">
+          <template #default="{ row }">
+            <code class="param-example">{{ row.example }}</code>
+          </template>
+        </el-table-column>
+        <el-table-column prop="desc" label="参数说明" min-width="180" />
+      </el-table>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, QuestionFilled } from '@element-plus/icons-vue'
 import { thresholdApi, deviceApi, deviceGroupApi } from '@/api'
 
 const route = useRoute()
@@ -159,8 +209,24 @@ const numericMetricTypes = [
 
 const statusMetricTypes = [
   { value: 'ONLINE', label: '设备在线' },
-  { value: 'OFFLINE', label: '设备离线' }
+  { value: 'OFFLINE', label: '设备离线' },
+  { value: 'ANDROID_ONLINE', label: '安卓实例在线数' },
+  { value: 'ANDROID_OFFLINE', label: '安卓实例离线数' },
+  { value: 'ANDROID_STATUS', label: '安卓实例状态' }
 ]
+
+/** 状态类指标：支持"无需条件（检测到即触发）" */
+const STATE_METRIC_TYPES = ['ONLINE', 'OFFLINE', 'ANDROID_ONLINE', 'ANDROID_OFFLINE']
+/** 字符类指标：按字符串比较 */
+const STRING_METRIC_TYPES = ['ANDROID_STATUS']
+
+const METRIC_LABELS = {}
+;[...numericMetricTypes, ...statusMetricTypes].forEach(t => { METRIC_LABELS[t.value] = t.label })
+
+const metricLabel = (type) => METRIC_LABELS[type] || type
+
+const isStateMetric = computed(() => STATE_METRIC_TYPES.includes(form.metricType))
+const isStringMetric = computed(() => STRING_METRIC_TYPES.includes(form.metricType))
 
 const operationGroups = [
   {
@@ -194,18 +260,68 @@ const operationGroups = [
 
 const groups = reactive([])
 const devices = reactive([])
+const paramHelpVisible = ref(false)
+
+/** 每种执行操作的参数示例与说明 */
+const OPERATION_PARAM_EXAMPLES = {
+  REBOOT_HOST: { desc: '主机级操作，无需参数', example: '{}' },
+  RUN_ANDROID: { desc: 'name：容器名称', example: '{"name":"container_01"}' },
+  STOP_ANDROID: { desc: 'name：容器名称', example: '{"name":"container_01"}' },
+  REBOOT_ANDROID: { desc: 'name：容器名称', example: '{"name":"container_01"}' },
+  RESET_ANDROID: { desc: 'name：容器名称', example: '{"name":"container_01"}' },
+  RENAME_ANDROID: { desc: 'name：原名称；newName：新名称', example: '{"name":"old_name","newName":"new_name"}' },
+  SET_CLIPBOARD: { desc: 'name：容器名称；text：剪贴板内容', example: '{"name":"c1","text":"hello"}' },
+  GET_CLIPBOARD: { desc: 'name：容器名称', example: '{"name":"c1"}' },
+  SET_LANGUAGE: { desc: 'country：国家代码；language：语言代码', example: '{"name":"c1","country":"cn","language":"zh"}' },
+  REFRESH_LOCATION: { desc: 'language：语言代码', example: '{"name":"c1","language":"zh"}' },
+  SCREENSHOT: { desc: 'level：清晰度等级（1-3）', example: '{"name":"c1","level":"1"}' },
+  SHELL_ADB: { desc: 'command：容器内 shell 命令（无需 adb 前缀）', example: '{"name":"c1","command":"pm list packages"}' }
+}
+
+/** 参数示例弹窗数据：操作分组拍平后附上示例 */
+const paramHelpList = computed(() =>
+  operationGroups.flatMap(g => g.options.map(op => ({
+    label: op.label,
+    example: (OPERATION_PARAM_EXAMPLES[op.value] || {}).example || '{}',
+    desc: (OPERATION_PARAM_EXAMPLES[op.value] || {}).desc || ''
+  })))
+)
+
+/** 操作参数输入框动态提示：跟随当前选中的执行操作 */
+const paramPlaceholder = (operationCode) => {
+  const item = OPERATION_PARAM_EXAMPLES[operationCode]
+  if (!item) return '请先选择执行操作，再按示例填写 JSON 参数'
+  return `示例：${item.example}\n说明：${item.desc}`
+}
 
 const form = reactive({
   name: '',
   metricType: 'CPU',
+  conditionType: 'NUMERIC',
   compareOp: 'GT',
   thresholdValue: 80,
+  thresholdText: '',
   triggerMode: 'DURATION',
   durationSec: 60,
   consecutiveCount: 2,
   scopeType: 'ALL',
   scopeId: null,
+  scopeIds: [],
   actions: []
+})
+
+// 指标类型切换时联动条件类型与默认比较操作
+watch(() => form.metricType, (type) => {
+  if (STRING_METRIC_TYPES.includes(type)) {
+    form.conditionType = 'STRING'
+    if (!['EQ', 'NE', 'CONTAINS'].includes(form.compareOp)) form.compareOp = 'EQ'
+  } else if (STATE_METRIC_TYPES.includes(type)) {
+    form.conditionType = 'NONE'
+    if (form.compareOp === 'CONTAINS') form.compareOp = 'GTE'
+  } else {
+    form.conditionType = 'NUMERIC'
+    if (form.compareOp === 'CONTAINS') form.compareOp = 'GT'
+  }
 })
 
 const metricUnit = (type) => {
@@ -219,6 +335,9 @@ const metricUnit = (type) => {
       return 'KB/s'
     case 'TEMP':
       return '°C'
+    case 'ANDROID_ONLINE':
+    case 'ANDROID_OFFLINE':
+      return '个'
     default:
       return ''
   }
@@ -248,6 +367,14 @@ const loadDevices = async () => {
   devices.splice(0, devices.length, ...(res.data.records || []))
 }
 
+/** 解析规则的多设备 ID：优先 scopeIds 逗号串，回退单个 scopeId */
+const parseScopeIds = (rule) => {
+  if (rule.scopeIds) {
+    return rule.scopeIds.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n))
+  }
+  return rule.scopeId ? [rule.scopeId] : []
+}
+
 const loadDetail = async () => {
   loading.value = true
   try {
@@ -257,13 +384,16 @@ const loadDetail = async () => {
     Object.assign(form, {
       name: rule.name || '',
       metricType: rule.metricType || 'CPU',
+      conditionType: rule.conditionType || 'NUMERIC',
       compareOp: rule.compareOp || 'GT',
       thresholdValue: rule.thresholdValue != null ? Number(rule.thresholdValue) : 80,
+      thresholdText: rule.thresholdText || '',
       triggerMode: rule.triggerMode || 'DURATION',
       durationSec: rule.durationSec || 60,
       consecutiveCount: rule.consecutiveCount || 2,
       scopeType: rule.scopeType || 'ALL',
-      scopeId: rule.scopeId || null
+      scopeId: rule.scopeId || null,
+      scopeIds: parseScopeIds(rule)
     })
     form.actions.splice(0, form.actions.length)
     const actions = data.actions || []
@@ -294,12 +424,20 @@ const validate = () => {
     ElMessage.warning('请选择指标类型')
     return false
   }
+  if (form.conditionType === 'NUMERIC' && (form.thresholdValue === null || form.thresholdValue === undefined || form.thresholdValue === '')) {
+    ElMessage.warning('请输入阈值')
+    return false
+  }
+  if (form.conditionType === 'STRING' && !form.thresholdText.trim()) {
+    ElMessage.warning('请输入字符判断的目标文本')
+    return false
+  }
   if (form.scopeType === 'GROUP' && !form.scopeId) {
     ElMessage.warning('请选择分组')
     return false
   }
-  if (form.scopeType === 'DEVICE' && !form.scopeId) {
-    ElMessage.warning('请选择设备')
+  if (form.scopeType === 'DEVICE' && form.scopeIds.length === 0) {
+    ElMessage.warning('请选择至少一台设备')
     return false
   }
   return true
@@ -312,13 +450,18 @@ const save = async () => {
     const payload = {
       name: form.name,
       metricType: form.metricType,
-      compareOp: form.compareOp,
-      thresholdValue: form.thresholdValue,
+      conditionType: form.conditionType,
+      compareOp: form.conditionType === 'NONE' ? null : form.compareOp,
+      thresholdValue: form.conditionType === 'NUMERIC' ? form.thresholdValue : null,
+      thresholdText: form.conditionType === 'STRING' ? form.thresholdText.trim() : null,
       triggerMode: form.triggerMode,
       durationSec: form.durationSec,
       consecutiveCount: form.consecutiveCount,
       scopeType: form.scopeType,
-      scopeId: form.scopeType === 'ALL' ? null : form.scopeId,
+      // scopeId 保留首选项用于兼容列表展示，多选以 scopeIds 为准
+      scopeId: form.scopeType === 'GROUP' ? form.scopeId
+        : (form.scopeType === 'DEVICE' ? (form.scopeIds[0] || null) : null),
+      scopeIds: form.scopeType === 'DEVICE' ? form.scopeIds : null,
       actions: form.actions
     }
     if (isEdit.value) {
@@ -348,6 +491,23 @@ onMounted(() => {
 .condition-row {
   display: flex;
   align-items: center;
+}
+.condition-block {
+  width: 100%;
+}
+.condition-sub-row {
+  margin-top: 8px;
+}
+.param-example {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  background-color: #f5f7fa;
+  padding: 2px 6px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+.param-help-tip {
+  margin-bottom: var(--spacing-md);
 }
 .unit-text {
   margin-left: 8px;

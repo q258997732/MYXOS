@@ -191,6 +191,94 @@ class ThresholdEvaluatorTest {
         assertTrue(evaluator.compare(new BigDecimal("4"), new BigDecimal("5"), CompareOp.NE));
     }
 
+    @Test
+    @DisplayName("字符串比较应支持等于、不等于与包含")
+    void compareTextOperations() {
+        assertTrue(evaluator.compareText("STOPPED", "STOPPED", CompareOp.EQ));
+        assertFalse(evaluator.compareText("RUNNING", "STOPPED", CompareOp.EQ));
+        assertTrue(evaluator.compareText("RUNNING", "STOPPED", CompareOp.NE));
+        assertTrue(evaluator.compareText("not running", "running", CompareOp.CONTAINS));
+        assertFalse(evaluator.compareText("running", "stop", CompareOp.CONTAINS));
+        assertFalse(evaluator.compareText(null, "STOPPED", CompareOp.EQ));
+    }
+
+    @Test
+    @DisplayName("字符判断规则应比较快照的字符串值并触发告警")
+    void evaluateShouldFireAlarmForStringRule() {
+        // Arrange
+        Device device = device(1L, 1L);
+        ThresholdRule rule = rule("ANDROID_STATUS", CompareOp.EQ.name(), null, "DURATION", 0, 0, ScopeType.ALL.name(), null);
+        rule.setThresholdText("STOPPED");
+        RuleCache.RuleWithActions rwa = new RuleCache.RuleWithActions(rule, Collections.emptyList());
+
+        MetricSnapshot snapshot = new MetricSnapshot();
+        snapshot.setDeviceId(1L);
+        snapshot.setMetricType("ANDROID_STATUS");
+        snapshot.setMetricValue("STOPPED");
+
+        when(ruleCache.getByMetricType("ANDROID_STATUS")).thenReturn(Collections.singletonList(rwa));
+        when(alarmEventMapper.selectFiringByRuleAndDevice(anyLong(), anyLong())).thenReturn(null);
+
+        // Act
+        evaluator.evaluate(device, Collections.singletonList(snapshot));
+
+        // Assert
+        ArgumentCaptor<AlarmEvent> captor = ArgumentCaptor.forClass(AlarmEvent.class);
+        verify(alarmEventMapper, times(1)).insert(captor.capture());
+        assertEquals("STOPPED", captor.getValue().getMetricValue());
+        assertEquals("STOPPED", captor.getValue().getThresholdValue());
+    }
+
+    @Test
+    @DisplayName("字符判断规则在数值快照为空时也能判定")
+    void stringRuleSkipsNumericNullCheck() {
+        // Arrange：ANDROID_STATUS 快照没有 metricNum，字符规则不应被跳过
+        Device device = device(1L, 1L);
+        ThresholdRule rule = rule("ANDROID_STATUS", CompareOp.EQ.name(), null, "DURATION", 0, 0, ScopeType.ALL.name(), null);
+        rule.setThresholdText("RUNNING");
+        RuleCache.RuleWithActions rwa = new RuleCache.RuleWithActions(rule, Collections.emptyList());
+
+        MetricSnapshot snapshot = new MetricSnapshot();
+        snapshot.setDeviceId(1L);
+        snapshot.setMetricType("ANDROID_STATUS");
+        snapshot.setMetricValue("STOPPED");
+
+        AlarmEvent firing = new AlarmEvent();
+        firing.setStatus("FIRING");
+
+        when(ruleCache.getByMetricType("ANDROID_STATUS")).thenReturn(Collections.singletonList(rwa));
+        when(alarmEventMapper.selectFiringByRuleAndDevice(anyLong(), anyLong())).thenReturn(firing);
+
+        // Act：规则期望 RUNNING 而实际 STOPPED → 不 breach → 已有告警应恢复
+        evaluator.evaluate(device, Collections.singletonList(snapshot));
+
+        // Assert
+        assertEquals("RESOLVED", firing.getStatus());
+    }
+
+    @Test
+    @DisplayName("DEVICE 作用范围应匹配 scopeIds 中的任一设备")
+    void matchScopeDeviceIds() {
+        // Arrange
+        ThresholdRule rule = rule("CPU", CompareOp.GT.name(), BigDecimal.ONE, "DURATION", 0, 0, ScopeType.DEVICE.name(), null);
+        rule.setScopeIds("3, 5,7");
+
+        // Act & Assert
+        assertTrue(evaluator.matchScope(rule, device(5L, 1L)));
+        assertFalse(evaluator.matchScope(rule, device(2L, 1L)));
+    }
+
+    @Test
+    @DisplayName("DEVICE 作用范围在 scopeIds 为空时回退匹配 scopeId")
+    void matchScopeDeviceFallbackToScopeId() {
+        // Arrange
+        ThresholdRule rule = rule("CPU", CompareOp.GT.name(), BigDecimal.ONE, "DURATION", 0, 0, ScopeType.DEVICE.name(), 1L);
+
+        // Act & Assert
+        assertTrue(evaluator.matchScope(rule, device(1L, 1L)));
+        assertFalse(evaluator.matchScope(rule, device(2L, 1L)));
+    }
+
     private Device device(Long id, Long groupId) {
         Device device = new Device();
         device.setId(id);

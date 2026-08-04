@@ -4,6 +4,7 @@ import bob.myxos.common.enums.DeviceStatus;
 import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.mytos.MytosClientFactory;
+import bob.myxos.collector.evaluate.ThresholdEvaluator;
 import bob.myxos.collector.service.MetricPersistService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class MetricCollectJob {
     private final DeviceMapper deviceMapper;
     private final MytosClientFactory clientFactory;
     private final MetricPersistService metricPersistService;
+    private final ThresholdEvaluator thresholdEvaluator;
 
     /** 指标采集线程池 */
     @Resource(name = "metricCollectExecutor")
@@ -57,7 +59,11 @@ public class MetricCollectJob {
             metricCollectExecutor.execute(() -> {
                 try {
                     MetricCollector collector = new MetricCollector(device, clientFactory,
-                            snapshots -> metricPersistService.saveBatchSnapshots(snapshots),
+                            snapshots -> {
+                                // 先持久化再评估：DURATION/CONSECUTIVE 触发模式依赖历史快照查询
+                                metricPersistService.saveBatchSnapshots(snapshots);
+                                thresholdEvaluator.evaluate(device, snapshots);
+                            },
                             deviceMapper);
                     collector.run();
                 } finally {

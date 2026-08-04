@@ -6,7 +6,6 @@ import javax.validation.Valid;
 import javax.validation.constraints.DecimalMin;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotBlank;
-import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Pattern;
 import javax.validation.constraints.Size;
 import java.math.BigDecimal;
@@ -27,15 +26,21 @@ public class ThresholdRuleReq {
     @NotBlank(message = "指标类型不能为空")
     private String metricType;
 
-    /** 比较操作：GT / GTE / LT / LTE / EQ / NE */
-    @NotBlank(message = "比较操作不能为空")
-    @Pattern(regexp = "^(GT|GTE|LT|LTE|EQ|NE)$", message = "比较操作仅支持 GT/GTE/LT/LTE/EQ/NE")
+    /** 条件类型：NUMERIC / STRING / NONE，为空时按 NUMERIC 处理 */
+    @Pattern(regexp = "^(NUMERIC|STRING|NONE)$", message = "条件类型仅支持 NUMERIC/STRING/NONE")
+    private String conditionType;
+
+    /** 比较操作：GT / GTE / LT / LTE / EQ / NE / CONTAINS（conditionType=NONE 时可空） */
+    @Pattern(regexp = "^(GT|GTE|LT|LTE|EQ|NE|CONTAINS)$", message = "比较操作仅支持 GT/GTE/LT/LTE/EQ/NE/CONTAINS")
     private String compareOp;
 
-    /** 阈值 */
-    @NotNull(message = "阈值不能为空")
+    /** 阈值（conditionType=NUMERIC 时必填，由 Service 层校验） */
     @DecimalMin(value = "0", message = "阈值不能为负数")
     private BigDecimal thresholdValue;
+
+    /** 字符判断目标值（conditionType=STRING 时必填，由 Service 层校验） */
+    @Size(max = 255, message = "字符判断目标值长度不能超过 255")
+    private String thresholdText;
 
     /** 触发模式：DURATION / CONSECUTIVE */
     @NotBlank(message = "触发模式不能为空")
@@ -57,6 +62,9 @@ public class ThresholdRuleReq {
 
     /** 作用对象 ID（scopeType=ALL 时为 null） */
     private Long scopeId;
+
+    /** 设备 ID 列表（scopeType=DEVICE 多选时使用，优先于 scopeId） */
+    private List<Long> scopeIds;
 
     /** 动作列表 */
     @Valid

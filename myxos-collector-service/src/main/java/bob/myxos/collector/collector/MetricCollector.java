@@ -65,6 +65,8 @@ public class MetricCollector implements Runnable {
         DeviceStatus status = DeviceStatus.OFFLINE;
         String version = null;
         LocalDateTime collectedAt = LocalDateTime.now();
+        int runningCount = 0;
+        int notRunningCount = 0;
 
         try {
             HealthResp health = client.healthcheck(device.getIp());
@@ -73,15 +75,71 @@ public class MetricCollector implements Runnable {
                 version = fetchHostVersion(client, device.getIp());
                 snapshots.add(buildVersionSnapshot(version, collectedAt));
                 snapshots.addAll(collectSystemMetrics(client, device.getIp(), collectedAt));
-                snapshots.addAll(collectAndroidStatuses(client, device.getIp(), collectedAt));
+                List<MetricSnapshot> androidSnapshots = collectAndroidStatuses(client, device.getIp(), collectedAt);
+                runningCount = countByStatus(androidSnapshots, true);
+                notRunningCount = androidSnapshots.size() - runningCount;
+                snapshots.addAll(androidSnapshots);
             }
         } catch (Exception e) {
             log.warn("采集设备失败 {}:{}", device.getIp(), device.getPort(), e);
             status = DeviceStatus.OFFLINE;
         }
 
+        // 状态类快照无论设备是否在线都要产出：
+        // 1. 离线设备也能触发"设备离线"阈值规则（此前离线不产生任何快照，规则永不触发）
+        // 2. 设备恢复在线时 ONLINE=1/OFFLINE=0 让 FIRING 告警自然恢复
+        // 设备离线时实例状态未知，安卓计数按 0 处理，避免残留历史告警
+        snapshots.add(buildCountSnapshot(MetricType.ANDROID_ONLINE, runningCount, collectedAt));
+        snapshots.add(buildCountSnapshot(MetricType.ANDROID_OFFLINE, notRunningCount, collectedAt));
+        snapshots.add(buildStateSnapshot(MetricType.ONLINE, status == DeviceStatus.ONLINE, collectedAt));
+        snapshots.add(buildStateSnapshot(MetricType.OFFLINE, status == DeviceStatus.OFFLINE, collectedAt));
+
         updateDeviceStatus(status, version);
         persistSnapshots(snapshots);
+    }
+
+    /**
+     * 统计实例状态快照中运行中/非运行中的数量
+     *
+     * @param androidSnapshots 实例状态快照（metricValue 为 RUNNING/STOPPED/TRANSITION/UNKNOWN）
+     * @param running          true 统计运行中数量，false 统计非运行中数量
+     * @return 数量
+     */
+    private int countByStatus(List<MetricSnapshot> androidSnapshots, boolean running) {
+        int count = 0;
+        for (MetricSnapshot snapshot : androidSnapshots) {
+            boolean isRunning = AndroidStatusParser.RUNNING.equals(snapshot.getMetricValue());
+            if (isRunning == running) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 构建计数型快照（如安卓实例在线/离线数量）
+     */
+    private MetricSnapshot buildCountSnapshot(MetricType type, int count, LocalDateTime collectedAt) {
+        MetricSnapshot snapshot = new MetricSnapshot();
+        snapshot.setDeviceId(device.getId());
+        snapshot.setMetricType(type.name());
+        snapshot.setMetricValue(String.valueOf(count));
+        snapshot.setMetricNum(BigDecimal.valueOf(count));
+        snapshot.setCollectedAt(collectedAt);
+        return snapshot;
+    }
+
+    /**
+     * 构建状态型快照（如设备在线/离线），metricNum 以 1/0 表示是否命中该状态
+     */
+    private MetricSnapshot buildStateSnapshot(MetricType type, boolean hit, LocalDateTime collectedAt) {
+        MetricSnapshot snapshot = new MetricSnapshot();
+        snapshot.setDeviceId(device.getId());
+        snapshot.setMetricType(type.name());
+        snapshot.setMetricValue(hit ? "1" : "0");
+        snapshot.setMetricNum(hit ? BigDecimal.ONE : BigDecimal.ZERO);
+        snapshot.setCollectedAt(collectedAt);
+        return snapshot;
     }
 
     private String fetchHostVersion(MytosClient client, String ip) {

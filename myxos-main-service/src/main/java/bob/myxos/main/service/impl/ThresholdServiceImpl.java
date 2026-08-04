@@ -1,5 +1,7 @@
 package bob.myxos.main.service.impl;
 
+import bob.myxos.common.enums.CompareOp;
+import bob.myxos.common.enums.ConditionType;
 import bob.myxos.common.exception.BizException;
 import bob.myxos.domain.entity.ThresholdAction;
 import bob.myxos.domain.entity.ThresholdRule;
@@ -13,8 +15,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 阈值规则业务实现
@@ -29,16 +33,20 @@ public class ThresholdServiceImpl implements ThresholdService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ThresholdRule create(ThresholdRuleReq req) {
+        normalizeCondition(req);
         ThresholdRule rule = new ThresholdRule();
         rule.setName(req.getName());
         rule.setMetricType(req.getMetricType());
+        rule.setConditionType(req.getConditionType());
         rule.setCompareOp(req.getCompareOp());
         rule.setThresholdValue(req.getThresholdValue());
+        rule.setThresholdText(req.getThresholdText());
         rule.setTriggerMode(req.getTriggerMode());
         rule.setDurationSec(req.getDurationSec());
         rule.setConsecutiveCount(req.getConsecutiveCount());
         rule.setScopeType(req.getScopeType());
         rule.setScopeId(req.getScopeId());
+        rule.setScopeIds(joinScopeIds(req.getScopeIds()));
         rule.setEnabled(1);
         ruleMapper.insert(rule);
 
@@ -50,18 +58,22 @@ public class ThresholdServiceImpl implements ThresholdService {
     @Transactional(rollbackFor = Exception.class)
     public ThresholdRule update(Long id, ThresholdRuleReq req) {
         ThresholdRule existing = requireRule(id);
+        normalizeCondition(req);
 
         ThresholdRule update = new ThresholdRule();
         update.setId(id);
         update.setName(req.getName());
         update.setMetricType(req.getMetricType());
+        update.setConditionType(req.getConditionType());
         update.setCompareOp(req.getCompareOp());
         update.setThresholdValue(req.getThresholdValue());
+        update.setThresholdText(req.getThresholdText());
         update.setTriggerMode(req.getTriggerMode());
         update.setDurationSec(req.getDurationSec());
         update.setConsecutiveCount(req.getConsecutiveCount());
         update.setScopeType(req.getScopeType());
         update.setScopeId(req.getScopeId());
+        update.setScopeIds(joinScopeIds(req.getScopeIds()));
         ruleMapper.updateById(update);
 
         // 逻辑删除旧动作（批量更新）
@@ -76,13 +88,16 @@ public class ThresholdServiceImpl implements ThresholdService {
 
         existing.setName(req.getName());
         existing.setMetricType(req.getMetricType());
+        existing.setConditionType(req.getConditionType());
         existing.setCompareOp(req.getCompareOp());
         existing.setThresholdValue(req.getThresholdValue());
+        existing.setThresholdText(req.getThresholdText());
         existing.setTriggerMode(req.getTriggerMode());
         existing.setDurationSec(req.getDurationSec());
         existing.setConsecutiveCount(req.getConsecutiveCount());
         existing.setScopeType(req.getScopeType());
         existing.setScopeId(req.getScopeId());
+        existing.setScopeIds(joinScopeIds(req.getScopeIds()));
         return existing;
     }
 
@@ -160,6 +175,83 @@ public class ThresholdServiceImpl implements ThresholdService {
             throw new BizException("阈值规则不存在");
         }
         return rule;
+    }
+
+    /**
+     * 按条件类型校验并规范化触发条件
+     * <ul>
+     *   <li>NUMERIC：比较操作限 GT/GTE/LT/LTE/EQ/NE，阈值必填</li>
+     *   <li>STRING：比较操作限 EQ/NE/CONTAINS，目标文本必填</li>
+     *   <li>NONE：无需条件，统一规范化为 GTE 1（采集侧状态快照以 1/0 表示是否命中）</li>
+     * </ul>
+     *
+     * @param req 规则请求
+     */
+    private void normalizeCondition(ThresholdRuleReq req) {
+        String conditionType = req.getConditionType() == null || req.getConditionType().trim().isEmpty()
+                ? ConditionType.NUMERIC.name() : req.getConditionType().trim().toUpperCase();
+        ConditionType type;
+        try {
+            type = ConditionType.valueOf(conditionType);
+        } catch (IllegalArgumentException e) {
+            throw new BizException("未知的条件类型: " + conditionType);
+        }
+        switch (type) {
+            case NUMERIC:
+                if (!isNumericCompareOp(req.getCompareOp())) {
+                    throw new BizException("数值判断的比较操作仅支持 GT/GTE/LT/LTE/EQ/NE");
+                }
+                if (req.getThresholdValue() == null) {
+                    throw new BizException("数值判断的阈值不能为空");
+                }
+                req.setThresholdText(null);
+                break;
+            case STRING:
+                if (!isStringCompareOp(req.getCompareOp())) {
+                    throw new BizException("字符判断的比较操作仅支持 EQ/NE/CONTAINS");
+                }
+                if (req.getThresholdText() == null || req.getThresholdText().trim().isEmpty()) {
+                    throw new BizException("字符判断的目标文本不能为空");
+                }
+                req.setThresholdValue(null);
+                break;
+            case NONE:
+                // 状态类指标（如设备离线）检测到即触发，规范化为数值 1 比较
+                req.setCompareOp(CompareOp.GTE.name());
+                req.setThresholdValue(BigDecimal.ONE);
+                req.setThresholdText(null);
+                break;
+            default:
+                throw new BizException("未知的条件类型: " + conditionType);
+        }
+        req.setConditionType(conditionType);
+    }
+
+    private boolean isNumericCompareOp(String compareOp) {
+        return CompareOp.GT.name().equals(compareOp) || CompareOp.GTE.name().equals(compareOp)
+                || CompareOp.LT.name().equals(compareOp) || CompareOp.LTE.name().equals(compareOp)
+                || CompareOp.EQ.name().equals(compareOp) || CompareOp.NE.name().equals(compareOp);
+    }
+
+    private boolean isStringCompareOp(String compareOp) {
+        return CompareOp.EQ.name().equals(compareOp) || CompareOp.NE.name().equals(compareOp)
+                || CompareOp.CONTAINS.name().equals(compareOp);
+    }
+
+    /**
+     * 将设备 ID 列表序列化为逗号分隔字符串
+     *
+     * @param scopeIds 设备 ID 列表
+     * @return 逗号分隔字符串，空列表返回 null
+     */
+    private String joinScopeIds(List<Long> scopeIds) {
+        if (scopeIds == null || scopeIds.isEmpty()) {
+            return null;
+        }
+        return scopeIds.stream()
+                .filter(id -> id != null)
+                .map(String::valueOf)
+                .collect(Collectors.joining(","));
     }
 
     /**

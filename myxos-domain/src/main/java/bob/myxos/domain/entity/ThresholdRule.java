@@ -28,11 +28,17 @@ public class ThresholdRule {
     /** 指标类型 */
     private String metricType;
 
-    /** 比较操作：GT / GTE / LT / LTE / EQ / NE */
+    /** 条件类型：NUMERIC（数值判断） / STRING（字符判断） / NONE（状态触发，无需条件） */
+    private String conditionType;
+
+    /** 比较操作：GT / GTE / LT / LTE / EQ / NE / CONTAINS */
     private String compareOp;
 
-    /** 阈值 */
+    /** 阈值（conditionType=NUMERIC 时有效） */
     private BigDecimal thresholdValue;
+
+    /** 字符判断目标值（conditionType=STRING 时有效） */
+    private String thresholdText;
 
     /** 触发模式：DURATION（持续时长） / CONSECUTIVE（连续次数） */
     private String triggerMode;
@@ -48,6 +54,9 @@ public class ThresholdRule {
 
     /** 作用对象 ID（分组 ID 或设备 ID，scopeType=ALL 时为 null） */
     private Long scopeId;
+
+    /** 设备 ID 列表（逗号分隔，scopeType=DEVICE 且多选时优先于 scopeId） */
+    private String scopeIds;
 
     /** 是否启用：1 启用，0 禁用 */
     private Integer enabled;

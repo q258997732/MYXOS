@@ -40,7 +40,7 @@
             </div>
             <div class="rule-item">
               <span class="rule-label">触发条件：</span>
-              <span>{{ item.compareOp }} {{ item.thresholdValue }}</span>
+              <span>{{ conditionText(item) }}</span>
             </div>
             <div class="rule-item">
               <span class="rule-label">作用范围：</span>
@@ -91,7 +91,7 @@ const loadRules = async () => {
     const deviceId = props.device.id
     const filtered = all.filter(r =>
       r.scopeType === 'ALL' ||
-      (r.scopeType === 'DEVICE' && r.scopeId === deviceId) ||
+      (r.scopeType === 'DEVICE' && matchDevice(r, deviceId)) ||
       (r.scopeType === 'GROUP' && r.scopeId === props.device.groupId)
     )
     rules.splice(0, rules.length, ...filtered)
@@ -100,10 +100,30 @@ const loadRules = async () => {
   }
 }
 
+/** 设备范围匹配：优先 scopeIds 逗号串，回退单个 scopeId */
+const matchDevice = (rule, deviceId) => {
+  if (rule.scopeIds) {
+    return rule.scopeIds.split(',').map(s => Number(s.trim())).includes(deviceId)
+  }
+  return rule.scopeId === deviceId
+}
+
+const conditionText = (item) => {
+  if (item.conditionType === 'NONE') return '检测到即触发'
+  if (item.conditionType === 'STRING') return `${item.compareOp} "${item.thresholdText}"`
+  return `${item.compareOp} ${item.thresholdValue}`
+}
+
 const scopeText = (item) => {
   if (item.scopeType === 'ALL') return '全部设备'
   if (item.scopeType === 'GROUP') return `分组 ID: ${item.scopeId}`
-  if (item.scopeType === 'DEVICE') return `设备 ID: ${item.scopeId}`
+  if (item.scopeType === 'DEVICE') {
+    if (item.scopeIds) {
+      const count = item.scopeIds.split(',').filter(s => s.trim()).length
+      return count > 1 ? `设备 × ${count}` : `设备 ID: ${item.scopeIds}`
+    }
+    return `设备 ID: ${item.scopeId}`
+  }
   return item.scopeType
 }
 
