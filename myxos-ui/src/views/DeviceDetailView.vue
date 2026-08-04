@@ -1,6 +1,12 @@
 <template>
   <div class="page-container">
-    <h2 class="page-title">设备详情</h2>
+    <div class="page-header">
+      <h2 class="page-title">设备详情</h2>
+      <div class="page-actions">
+        <span>{{ userStore.username }}</span>
+        <el-button type="primary" link @click="logout">登出</el-button>
+      </div>
+    </div>
 
     <el-tabs v-model="activeTab" type="border-card">
       <el-tab-pane label="基本信息" name="info">
@@ -12,7 +18,7 @@
             <DeviceStatusTag :status="device.status" />
           </el-descriptions-item>
           <el-descriptions-item label="版本">{{ device.version || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="最后在线">{{ device.lastSeenAt || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="最后在线">{{ formatDateTime(device.lastSeenAt) }}</el-descriptions-item>
         </el-descriptions>
       </el-tab-pane>
 
@@ -180,7 +186,9 @@
         <el-table :data="alarms" size="small" stripe>
           <el-table-column prop="ruleName" label="规则" />
           <el-table-column prop="metricValue" label="指标值" />
-          <el-table-column prop="firedAt" label="触发时间" />
+          <el-table-column label="触发时间">
+            <template #default="{ row }">{{ formatDateTime(row.firedAt) }}</template>
+          </el-table-column>
           <el-table-column prop="status" label="状态" />
         </el-table>
       </el-tab-pane>
@@ -189,7 +197,9 @@
         <el-table :data="logs" size="small" stripe>
           <el-table-column prop="logLevel" label="级别" />
           <el-table-column prop="message" label="消息" />
-          <el-table-column prop="createdAt" label="时间" />
+          <el-table-column label="时间">
+            <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+          </el-table-column>
         </el-table>
       </el-tab-pane>
 
@@ -198,7 +208,9 @@
           <el-table-column prop="operationCode" label="操作" />
           <el-table-column prop="status" label="状态" />
           <el-table-column prop="resultMsg" label="结果" />
-          <el-table-column prop="finishedAt" label="完成时间" />
+          <el-table-column label="完成时间">
+            <template #default="{ row }">{{ formatDateTime(row.finishedAt) }}</template>
+          </el-table-column>
         </el-table>
       </el-tab-pane>
     </el-tabs>
@@ -207,7 +219,9 @@
     <el-drawer v-model="historyVisible" :title="historyTitle" size="600px">
       <el-table v-loading="historyLoading" :data="historyRecords" size="small" stripe>
         <el-table-column prop="metricValue" label="指标值" />
-        <el-table-column prop="collectedAt" label="采集时间" width="180" />
+        <el-table-column label="采集时间" width="180">
+          <template #default="{ row }">{{ formatDateTime(row.collectedAt) }}</template>
+        </el-table-column>
       </el-table>
       <div class="pagination-bar">
         <el-pagination
@@ -225,14 +239,17 @@
 
 <script setup>
 import { reactive, ref, onMounted, onUnmounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Cellphone } from '@element-plus/icons-vue'
-import { deviceApi } from '@/api'
+import { deviceApi, authApi } from '@/api'
+import { useUserStore } from '@/store'
 import DeviceStatusTag from '@/components/DeviceStatusTag.vue'
 import { formatDateTime } from '@/utils/date'
 
 const route = useRoute()
+const router = useRouter()
+const userStore = useUserStore()
 const deviceId = route.params.id
 const activeTab = ref('info')
 const device = reactive({})
@@ -287,6 +304,16 @@ const METRIC_LABELS = {
 }
 
 let refreshTimer = null
+
+async function logout() {
+  try {
+    await authApi.logout()
+  } catch (e) {
+    // ignore
+  }
+  userStore.clearUser()
+  router.push('/login')
+}
 
 async function loadDevice() {
   const res = await deviceApi.detail(deviceId)
