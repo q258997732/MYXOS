@@ -9,6 +9,7 @@ import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.DeviceGroup;
 import bob.myxos.domain.entity.MetricSnapshot;
 import bob.myxos.domain.entity.OpTask;
+import bob.myxos.domain.entity.ThresholdRule;
 import bob.myxos.domain.mapper.ActionLogMapper;
 import bob.myxos.domain.mapper.AlarmEventMapper;
 import bob.myxos.domain.mapper.DeviceGroupMapper;
@@ -30,6 +31,7 @@ import bob.myxos.mytos.dto.ClipboardResp;
 import bob.myxos.mytos.dto.ScreenshotResp;
 import bob.myxos.mytos.dto.ShellResp;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -204,9 +206,75 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deleteDevice(Long id) {
         getDetail(id);
         deviceMapper.deleteById(id);
+        // 级联清理设备关联数据（均为逻辑删除）：
+        // 指标快照、告警事件、操作任务（含未执行的 PENDING 采集/操作任务）、动作日志
+        metricSnapshotMapper.delete(new LambdaQueryWrapper<MetricSnapshot>()
+                .eq(MetricSnapshot::getDeviceId, id));
+        alarmEventMapper.delete(new LambdaQueryWrapper<AlarmEvent>()
+                .eq(AlarmEvent::getDeviceId, id));
+        opTaskMapper.delete(new LambdaQueryWrapper<OpTask>()
+                .eq(OpTask::getDeviceId, id));
+        actionLogMapper.delete(new LambdaQueryWrapper<ActionLog>()
+                .eq(ActionLog::getDeviceId, id));
+        removeDeviceFromThresholdRules(id);
+        log.info("设备已删除并级联清理关联数据：deviceId={}", id);
+    }
+
+    /**
+     * 从引用该设备的阈值规则中剔除设备：
+     * scopeIds 列表移除该设备 ID；剔除后不再包含任何目标设备的 DEVICE 规则直接禁用，
+     * 避免残留永不命中的规则
+     *
+     * @param deviceId 被删除的设备 ID
+     */
+    private void removeDeviceFromThresholdRules(Long deviceId) {
+        List<ThresholdRule> rules = thresholdRuleMapper.selectList(new LambdaQueryWrapper<ThresholdRule>()
+                .eq(ThresholdRule::getScopeType, "DEVICE"));
+        if (rules == null || rules.isEmpty()) {
+            return;
+        }
+        for (ThresholdRule rule : rules) {
+            List<Long> ids = parseScopeIds(rule.getScopeIds());
+            boolean referenced = ids.remove(deviceId);
+            boolean scopeIdMatched = rule.getScopeId() != null && rule.getScopeId().equals(deviceId);
+            if (!referenced && !scopeIdMatched) {
+                continue;
+            }
+            Long newScopeId = scopeIdMatched ? (ids.isEmpty() ? null : ids.get(0)) : rule.getScopeId();
+            String newScopeIds = ids.isEmpty() ? null
+                    : ids.stream().map(String::valueOf).collect(Collectors.joining(","));
+            boolean disable = newScopeId == null && newScopeIds == null;
+            thresholdRuleMapper.update(null, new LambdaUpdateWrapper<ThresholdRule>()
+                    .eq(ThresholdRule::getId, rule.getId())
+                    .set(ThresholdRule::getScopeId, newScopeId)
+                    .set(ThresholdRule::getScopeIds, newScopeIds)
+                    .set(disable, ThresholdRule::getEnabled, 0));
+            if (disable) {
+                log.info("阈值规则因目标设备被删除而禁用：ruleId={}, deviceId={}", rule.getId(), deviceId);
+            }
+        }
+    }
+
+    /**
+     * 解析逗号分隔的设备 ID 列表
+     */
+    private List<Long> parseScopeIds(String scopeIds) {
+        List<Long> ids = new ArrayList<>();
+        if (scopeIds == null || scopeIds.trim().isEmpty()) {
+            return ids;
+        }
+        for (String part : scopeIds.split(",")) {
+            try {
+                ids.add(Long.parseLong(part.trim()));
+            } catch (NumberFormatException ignored) {
+                // 忽略非法片段
+            }
+        }
+        return ids;
     }
 
     @Override
@@ -507,10 +575,18 @@ public class DeviceServiceImpl implements DeviceService {
         Device device = getDetail(id);
         MytosClient client = clientFactory.create(device.getIp(), device.getPort());
         ShellResp resp = client.shell(device.getIp(), name, command);
-        if (resp == null || resp.getData() == null) {
+        if (resp == null) {
             return "";
         }
+        // 真实设备将命令输出放在 message/msg 字段，data 仅包含 shell_code
+        String msg = resp.getMsg();
+        if (msg != null && !msg.isEmpty()) {
+            return msg;
+        }
         JsonNode data = resp.getData();
+        if (data == null) {
+            return "";
+        }
         if (data.has("output")) {
             return data.get("output").asText("");
         }

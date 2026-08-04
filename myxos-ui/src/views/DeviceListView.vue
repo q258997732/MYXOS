@@ -155,7 +155,11 @@ const goDetail = (id) => {
 
 const remove = async (device) => {
   try {
-    await ElMessageBox.confirm(`确认删除设备 "${device.name || device.ip}"？`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `确认删除设备 "${device.name || device.ip}"？将同时清理其指标、告警、日志与未执行的采集/操作任务，引用该设备的阈值规则会被移除或禁用。`,
+      '提示',
+      { type: 'warning' }
+    )
     await deviceApi.delete(device.id)
     ElMessage.success('删除成功')
     load()

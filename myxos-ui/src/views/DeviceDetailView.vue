@@ -203,9 +203,11 @@
     </el-tabs>
 
     <!-- 截图临时预览 -->
-    <el-dialog v-model="screenshotVisible" title="设备截图" width="fit-content" align-center destroy-on-close>
-      <img v-if="screenshotData" :src="screenshotData" style="max-width: 80vw; max-height: 80vh; display: block;" />
-      <span v-else>暂无截图数据</span>
+    <el-dialog v-model="screenshotVisible" title="设备截图" width="90%" align-center destroy-on-close>
+      <div class="screenshot-wrapper">
+        <img v-if="screenshotData" :src="screenshotData" class="screenshot-img" />
+        <span v-else>暂无截图数据</span>
+      </div>
     </el-dialog>
 
     <!-- 参数/结果对话框 -->
@@ -330,9 +332,12 @@ const historyChartRef = ref(null)
 const historyChartVisible = ref(false)
 let historyChart = null
 let taskPollTimer = null
+let androidPollTimer = null
 
 const TASK_POLL_MAX_COUNT = 10
 const TASK_POLL_INTERVAL_MS = 3000
+const ANDROID_POLL_MAX_COUNT = 10
+const ANDROID_POLL_INTERVAL_MS = 3000
 
 const METRIC_LABELS = {
   CPU: 'CPU 使用率',
@@ -367,15 +372,19 @@ async function loadDevice() {
   Object.assign(device, res.data)
 }
 
-async function loadAndroids() {
-  androidLoading.value = true
+async function loadAndroids(silent = false) {
+  if (!silent) {
+    androidLoading.value = true
+  }
   try {
     const res = await deviceApi.androids(deviceId)
     androids.splice(0, androids.length, ...(res.data || []))
   } catch (e) {
     // 错误已在拦截器中提示
   } finally {
-    androidLoading.value = false
+    if (!silent) {
+      androidLoading.value = false
+    }
   }
 }
 
@@ -473,6 +482,33 @@ async function submitOp(code, params = {}) {
   }
   if (activeTab.value === 'tasks') {
     startTaskPolling()
+  }
+  // 操作可能改变实例状态（启动/停止/重启等），立即刷新并轮询实例列表直至状态稳定
+  loadAndroids(true)
+  startAndroidPolling()
+}
+
+function startAndroidPolling() {
+  stopAndroidPolling()
+  let count = 0
+  androidPollTimer = setInterval(async () => {
+    try {
+      await loadAndroids(true)
+    } catch (e) {
+      // 错误已在拦截器中提示，继续轮询直到达到上限
+    } finally {
+      count++
+      if (count >= ANDROID_POLL_MAX_COUNT) {
+        stopAndroidPolling()
+      }
+    }
+  }, ANDROID_POLL_INTERVAL_MS)
+}
+
+function stopAndroidPolling() {
+  if (androidPollTimer) {
+    clearInterval(androidPollTimer)
+    androidPollTimer = null
   }
 }
 
@@ -702,7 +738,10 @@ function startRefresh() {
   refreshTimer = setInterval(() => {
     if (activeTab.value === 'metrics') {
       loadMetrics()
-      loadAndroids()
+      loadAndroids(true)
+    } else if (activeTab.value === 'androids') {
+      // 安卓实例 Tab 保持状态实时刷新（静音模式，不显示加载遮罩）
+      loadAndroids(true)
     }
   }, 5000)
 }
@@ -747,6 +786,7 @@ onMounted(() => {
 onUnmounted(() => {
   stopRefresh()
   stopTaskPolling()
+  stopAndroidPolling()
   if (historyChart) {
     window.removeEventListener('resize', handleChartResize)
     historyChart.dispose()
@@ -895,5 +935,15 @@ onUnmounted(() => {
   margin-top: var(--spacing-md);
   display: flex;
   justify-content: flex-end;
+}
+.screenshot-wrapper {
+  display: flex;
+  justify-content: center;
+}
+.screenshot-img {
+  width: 100%;
+  max-height: 78vh;
+  object-fit: contain;
+  display: block;
 }
 </style>
