@@ -21,11 +21,26 @@ body {
   padding: var(--spacing-md);
 }
 
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
 .page-title {
   font-size: 20px;
   font-weight: 600;
-  margin-bottom: var(--spacing-md);
   color: var(--text-primary);
+  margin: 0;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: 14px;
 }
 
 .filter-card {

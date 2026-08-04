@@ -47,15 +47,9 @@
         </el-menu-item>
       </el-menu>
     </el-aside>
-    <el-container>
-      <el-header class="header">
-        <span>{{ userStore.username }}</span>
-        <el-button type="text" @click="logout">登出</el-button>
-      </el-header>
-      <el-main class="main">
-        <router-view />
-      </el-main>
-    </el-container>
+    <el-main class="main">
+      <router-view />
+    </el-main>
   </el-container>
 </template>
 
@@ -94,17 +88,9 @@ async function logout() {
   font-weight: bold;
   border-bottom: 1px solid #1f2d3d;
 }
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--spacing-md);
-  height: var(--header-height);
-  background-color: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-}
 .main {
   background-color: var(--content-bg);
-  padding: var(--spacing-md);
+  padding: 0;
+  overflow: auto;
 }
 </style>
