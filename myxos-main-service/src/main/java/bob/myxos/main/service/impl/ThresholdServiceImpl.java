@@ -10,6 +10,7 @@ import bob.myxos.domain.mapper.ThresholdRuleMapper;
 import bob.myxos.main.dto.ThresholdRuleReq;
 import bob.myxos.main.service.ThresholdService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -47,6 +48,7 @@ public class ThresholdServiceImpl implements ThresholdService {
         rule.setScopeType(req.getScopeType());
         rule.setScopeId(req.getScopeId());
         rule.setScopeIds(joinScopeIds(req.getScopeIds()));
+        rule.setScopeAndroidName(normalizeScopeAndroidName(req));
         rule.setEnabled(1);
         ruleMapper.insert(rule);
 
@@ -60,21 +62,23 @@ public class ThresholdServiceImpl implements ThresholdService {
         ThresholdRule existing = requireRule(id);
         normalizeCondition(req);
 
-        ThresholdRule update = new ThresholdRule();
-        update.setId(id);
-        update.setName(req.getName());
-        update.setMetricType(req.getMetricType());
-        update.setConditionType(req.getConditionType());
-        update.setCompareOp(req.getCompareOp());
-        update.setThresholdValue(req.getThresholdValue());
-        update.setThresholdText(req.getThresholdText());
-        update.setTriggerMode(req.getTriggerMode());
-        update.setDurationSec(req.getDurationSec());
-        update.setConsecutiveCount(req.getConsecutiveCount());
-        update.setScopeType(req.getScopeType());
-        update.setScopeId(req.getScopeId());
-        update.setScopeIds(joinScopeIds(req.getScopeIds()));
-        ruleMapper.updateById(update);
+        // 使用 UpdateWrapper 显式 set：thresholdValue/thresholdText/scopeId/scopeIds/scopeAndroidName
+        // 均可为 null，updateById 会忽略 null 字段导致旧值残留（如切换条件类型后旧阈值清不掉）
+        ruleMapper.update(null, new LambdaUpdateWrapper<ThresholdRule>()
+                .eq(ThresholdRule::getId, id)
+                .set(ThresholdRule::getName, req.getName())
+                .set(ThresholdRule::getMetricType, req.getMetricType())
+                .set(ThresholdRule::getConditionType, req.getConditionType())
+                .set(ThresholdRule::getCompareOp, req.getCompareOp())
+                .set(ThresholdRule::getThresholdValue, req.getThresholdValue())
+                .set(ThresholdRule::getThresholdText, req.getThresholdText())
+                .set(ThresholdRule::getTriggerMode, req.getTriggerMode())
+                .set(ThresholdRule::getDurationSec, req.getDurationSec())
+                .set(ThresholdRule::getConsecutiveCount, req.getConsecutiveCount())
+                .set(ThresholdRule::getScopeType, req.getScopeType())
+                .set(ThresholdRule::getScopeId, req.getScopeId())
+                .set(ThresholdRule::getScopeIds, joinScopeIds(req.getScopeIds()))
+                .set(ThresholdRule::getScopeAndroidName, normalizeScopeAndroidName(req)));
 
         // 逻辑删除旧动作（批量更新）
         ThresholdAction deleted = new ThresholdAction();
@@ -98,6 +102,7 @@ public class ThresholdServiceImpl implements ThresholdService {
         existing.setScopeType(req.getScopeType());
         existing.setScopeId(req.getScopeId());
         existing.setScopeIds(joinScopeIds(req.getScopeIds()));
+        existing.setScopeAndroidName(normalizeScopeAndroidName(req));
         return existing;
     }
 
@@ -252,6 +257,22 @@ public class ThresholdServiceImpl implements ThresholdService {
                 .filter(id -> id != null)
                 .map(String::valueOf)
                 .collect(Collectors.joining(","));
+    }
+
+    /**
+     * 规范化安卓实例名：仅 ANDROID_STATUS 指标保留，其余指标强制置空；空白串按 null 处理
+     *
+     * @param req 规则请求
+     * @return 规范化后的实例名，可能为 null
+     */
+    private String normalizeScopeAndroidName(ThresholdRuleReq req) {
+        if (req.getScopeAndroidName() == null || req.getScopeAndroidName().trim().isEmpty()) {
+            return null;
+        }
+        if (!"ANDROID_STATUS".equals(req.getMetricType())) {
+            return null;
+        }
+        return req.getScopeAndroidName().trim();
     }
 
     /**

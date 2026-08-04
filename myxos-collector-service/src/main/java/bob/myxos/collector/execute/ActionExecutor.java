@@ -23,10 +23,11 @@ public interface ActionExecutor {
     /**
      * 执行动作
      *
-     * @param rule   触发动作的规则
-     * @param action 动作配置
-     * @param device 目标设备
-     * @param alarmId 关联告警 ID
+     * @param rule        触发动作的规则
+     * @param action      动作配置
+     * @param device      目标设备
+     * @param alarmId     关联告警 ID
+     * @param androidName 触发快照对应的安卓实例名，非实例类快照为 null
      */
-    void execute(ThresholdRule rule, ThresholdAction action, Device device, Long alarmId);
+    void execute(ThresholdRule rule, ThresholdAction action, Device device, Long alarmId, String androidName);
 }

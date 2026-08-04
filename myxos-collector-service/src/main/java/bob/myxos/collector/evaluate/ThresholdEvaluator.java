@@ -11,6 +11,8 @@ import bob.myxos.domain.entity.ThresholdAction;
 import bob.myxos.domain.entity.ThresholdRule;
 import bob.myxos.domain.mapper.AlarmEventMapper;
 import bob.myxos.domain.mapper.MetricSnapshotMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -48,6 +50,7 @@ public class ThresholdEvaluator {
     private final MetricSnapshotMapper metricSnapshotMapper;
     private final AlarmEventMapper alarmEventMapper;
     private final ActionExecutorRegistry executorRegistry;
+    private final ObjectMapper objectMapper;
 
     /**
      * 对一台设备的一批指标快照进行阈值判定
@@ -79,21 +82,43 @@ public class ThresholdEvaluator {
         if (rules.isEmpty()) {
             return;
         }
+        String androidName = extractAndroidName(snapshot);
         for (RuleCache.RuleWithActions rwa : rules) {
             ThresholdRule rule = rwa.getRule();
             try {
-                if (!matchScope(rule, device)) {
+                if (!matchScope(rule, device, androidName)) {
                     continue;
                 }
                 boolean breached = isBreached(rule, device, snapshot);
                 if (breached) {
-                    onBreach(rule, rwa.getActions(), device, displayValue(rule, snapshot));
+                    onBreach(rule, rwa.getActions(), device, displayValue(rule, snapshot), androidName);
                 } else {
-                    onRecover(rule, device);
+                    onRecover(rule, device, androidName);
                 }
             } catch (Exception e) {
                 log.error("规则判定异常：ruleId={}, deviceId={}", rule.getId(), device.getId(), e);
             }
+        }
+    }
+
+    /**
+     * 从快照 extra 中解析安卓实例名（ANDROID_STATUS 快照的 extra 形如 {"name":"容器名"}）
+     *
+     * @param snapshot 指标快照
+     * @return 安卓实例名，非实例类快照返回 null
+     */
+    private String extractAndroidName(MetricSnapshot snapshot) {
+        String extra = snapshot.getExtra();
+        if (extra == null || extra.isEmpty()) {
+            return null;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(extra);
+            JsonNode nameNode = node.get("name");
+            return nameNode != null && !nameNode.isNull() ? nameNode.asText() : null;
+        } catch (Exception e) {
+            log.debug("解析快照 extra 失败：{}", extra);
+            return null;
         }
     }
 
@@ -115,15 +140,23 @@ public class ThresholdEvaluator {
     }
 
     /**
-     * 判断规则作用范围是否覆盖当前设备
+     * 判断规则作用范围是否覆盖当前设备与快照
      * <p>
-     * scopeType=DEVICE 时优先匹配 scopeIds（逗号分隔多设备），为空则回退匹配 scopeId
+     * scopeType=DEVICE 时优先匹配 scopeIds（逗号分隔多设备），为空则回退匹配 scopeId；
+     * 规则配置了 scopeAndroidName 时，仅匹配该安卓实例的快照（ANDROID_STATUS 场景）
      *
-     * @param rule   规则
-     * @param device 设备
+     * @param rule        规则
+     * @param device      设备
+     * @param androidName 快照对应的安卓实例名，非实例类快照为 null
      * @return true 表示命中
      */
-    boolean matchScope(ThresholdRule rule, Device device) {
+    boolean matchScope(ThresholdRule rule, Device device, String androidName) {
+        // 实例名过滤：规则指定了目标实例名时，仅匹配该实例的快照
+        String scopeAndroidName = rule.getScopeAndroidName();
+        if (scopeAndroidName != null && !scopeAndroidName.trim().isEmpty()
+                && !scopeAndroidName.trim().equals(androidName)) {
+            return false;
+        }
         String scopeType = rule.getScopeType();
         if (ScopeType.ALL.name().equals(scopeType)) {
             return true;
@@ -237,8 +270,7 @@ public class ThresholdEvaluator {
                 return true;
             }
             LocalDateTime startTime = LocalDateTime.now().minusSeconds(durationSec);
-            List<MetricSnapshot> recent = metricSnapshotMapper.selectRecentByDeviceAndType(
-                    device.getId(), rule.getMetricType(), startTime);
+            List<MetricSnapshot> recent = selectHistory(device, rule, snapshot, startTime, null);
             if (recent == null || recent.isEmpty()) {
                 return false;
             }
@@ -251,8 +283,7 @@ public class ThresholdEvaluator {
             if (count <= 0) {
                 return true;
             }
-            List<MetricSnapshot> recent = metricSnapshotMapper.selectLatestByDeviceAndType(
-                    device.getId(), rule.getMetricType(), count);
+            List<MetricSnapshot> recent = selectHistory(device, rule, snapshot, null, count);
             if (recent == null || recent.size() < count) {
                 return false;
             }
@@ -265,33 +296,65 @@ public class ThresholdEvaluator {
     }
 
     /**
+     * 查询历史采样：带 extra 的快照（如 ANDROID_STATUS 按实例区分）按 extra 精确过滤，
+     * 避免同一设备上不同安卓实例的采样混在一起影响持续时长/连续次数判定
+     *
+     * @param startTime 持续时长模式的起始时间（CONSECUTIVE 模式传 null）
+     * @param limit     连续次数模式的条数上限（DURATION 模式传 null）
+     */
+    private List<MetricSnapshot> selectHistory(Device device, ThresholdRule rule, MetricSnapshot snapshot,
+                                               LocalDateTime startTime, Integer limit) {
+        String extra = snapshot.getExtra();
+        boolean hasExtra = extra != null && !extra.isEmpty();
+        if (startTime != null) {
+            return hasExtra
+                    ? metricSnapshotMapper.selectRecentByDeviceTypeAndExtra(
+                            device.getId(), rule.getMetricType(), extra, startTime)
+                    : metricSnapshotMapper.selectRecentByDeviceAndType(
+                            device.getId(), rule.getMetricType(), startTime);
+        }
+        return hasExtra
+                ? metricSnapshotMapper.selectLatestByDeviceTypeAndExtra(
+                        device.getId(), rule.getMetricType(), extra, limit)
+                : metricSnapshotMapper.selectLatestByDeviceAndType(
+                        device.getId(), rule.getMetricType(), limit);
+    }
+
+    /**
      * breach 时的处理：插入或更新 FIRING 告警，并执行动作
+     * <p>
+     * 动作仅在新建 FIRING 告警（状态跃迁）时执行一次；
+     * 已处于 FIRING 的告警只刷新指标值与触发时间，避免 OPERATION 类动作
+     * （如重启安卓实例）在每个采集周期重复执行造成重启循环
      *
      * @param displayValue 告警展示用指标值（数值文本或字符串值）
+     * @param androidName  触发快照对应的安卓实例名，非实例类快照为 null
      */
-    private void onBreach(ThresholdRule rule, List<ThresholdAction> actions, Device device, String displayValue) {
-        AlarmEvent firing = alarmEventMapper.selectFiringByRuleAndDevice(rule.getId(), device.getId());
+    private void onBreach(ThresholdRule rule, List<ThresholdAction> actions, Device device,
+                          String displayValue, String androidName) {
+        AlarmEvent firing = alarmEventMapper.selectFiringByRuleDeviceAndAndroid(
+                rule.getId(), device.getId(), androidName);
         LocalDateTime now = LocalDateTime.now();
-        Long alarmId;
-        if (firing == null) {
-            AlarmEvent alarm = new AlarmEvent();
-            alarm.setRuleId(rule.getId());
-            alarm.setDeviceId(device.getId());
-            alarm.setMetricType(rule.getMetricType());
-            alarm.setMetricValue(displayValue);
-            alarm.setThresholdValue(rule.getThresholdValue() == null
-                    ? rule.getThresholdText()
-                    : rule.getThresholdValue().toPlainString());
-            alarm.setFiredAt(now);
-            alarm.setStatus(ALARM_STATUS_FIRING);
-            alarmEventMapper.insert(alarm);
-            alarmId = alarm.getId();
-        } else {
+        if (firing != null) {
             firing.setMetricValue(displayValue);
             firing.setFiredAt(now);
             alarmEventMapper.updateById(firing);
-            alarmId = firing.getId();
+            return;
         }
+
+        AlarmEvent alarm = new AlarmEvent();
+        alarm.setRuleId(rule.getId());
+        alarm.setDeviceId(device.getId());
+        alarm.setAndroidName(androidName);
+        alarm.setMetricType(rule.getMetricType());
+        alarm.setMetricValue(displayValue);
+        alarm.setThresholdValue(rule.getThresholdValue() == null
+                ? rule.getThresholdText()
+                : rule.getThresholdValue().toPlainString());
+        alarm.setFiredAt(now);
+        alarm.setStatus(ALARM_STATUS_FIRING);
+        alarmEventMapper.insert(alarm);
+        Long alarmId = alarm.getId();
 
         if (actions == null || actions.isEmpty()) {
             return;
@@ -303,7 +366,7 @@ public class ThresholdEvaluator {
                     log.warn("未找到动作执行器：actionType={}, actionId={}", action.getActionType(), action.getId());
                     continue;
                 }
-                executorOpt.get().execute(rule, action, device, alarmId);
+                executorOpt.get().execute(rule, action, device, alarmId, androidName);
             } catch (Exception e) {
                 log.error("执行动作异常：actionId={}, ruleId={}, deviceId={}",
                         action.getId(), rule.getId(), device.getId(), e);
@@ -312,10 +375,11 @@ public class ThresholdEvaluator {
     }
 
     /**
-     * 未 breach 时若存在 FIRING 告警则标记为 RESOLVED
+     * 未 breach 时若存在 FIRING 告警则标记为 RESOLVED（按规则+设备+实例维度匹配）
      */
-    private void onRecover(ThresholdRule rule, Device device) {
-        AlarmEvent firing = alarmEventMapper.selectFiringByRuleAndDevice(rule.getId(), device.getId());
+    private void onRecover(ThresholdRule rule, Device device, String androidName) {
+        AlarmEvent firing = alarmEventMapper.selectFiringByRuleDeviceAndAndroid(
+                rule.getId(), device.getId(), androidName);
         if (firing == null) {
             return;
         }

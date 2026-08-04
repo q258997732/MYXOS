@@ -17,14 +17,21 @@ public interface AlarmEventMapper extends BaseMapper<AlarmEvent> {
 
     /**
      * 查询指定规则与设备当前最新的一条 FIRING 告警
+     * <p>
+     * androidName 非空时按实例维度匹配（ANDROID_STATUS 场景），
+     * 使用 MySQL 空值安全比较 {@code <=>}，使 null 仅匹配 android_name 为 NULL 的记录
      *
-     * @param ruleId   规则 ID
-     * @param deviceId 设备 ID
+     * @param ruleId      规则 ID
+     * @param deviceId    设备 ID
+     * @param androidName 安卓实例名，可为 null（匹配 android_name 为 NULL 的告警）
      * @return FIRING 告警，不存在返回 null
      */
     @Select("SELECT * FROM alarm_event WHERE rule_id = #{ruleId} AND device_id = #{deviceId} " +
+            "AND android_name <=> #{androidName} " +
             "AND status = 'FIRING' AND deleted = 0 ORDER BY fired_at DESC LIMIT 1")
-    AlarmEvent selectFiringByRuleAndDevice(@Param("ruleId") Long ruleId, @Param("deviceId") Long deviceId);
+    AlarmEvent selectFiringByRuleDeviceAndAndroid(@Param("ruleId") Long ruleId,
+                                                  @Param("deviceId") Long deviceId,
+                                                  @Param("androidName") String androidName);
 
     /**
      * 批量删除截止时间之前的告警事件

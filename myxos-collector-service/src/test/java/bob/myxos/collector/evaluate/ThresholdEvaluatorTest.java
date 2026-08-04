@@ -11,6 +11,7 @@ import bob.myxos.domain.entity.ThresholdAction;
 import bob.myxos.domain.entity.ThresholdRule;
 import bob.myxos.domain.mapper.AlarmEventMapper;
 import bob.myxos.domain.mapper.MetricSnapshotMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -57,7 +58,8 @@ class ThresholdEvaluatorTest {
 
     @BeforeEach
     void setUp() {
-        evaluator = new ThresholdEvaluator(ruleCache, metricSnapshotMapper, alarmEventMapper, executorRegistry);
+        evaluator = new ThresholdEvaluator(ruleCache, metricSnapshotMapper, alarmEventMapper,
+                executorRegistry, new ObjectMapper());
     }
 
     @Test
@@ -74,7 +76,7 @@ class ThresholdEvaluatorTest {
         MetricSnapshot snapshot = snapshot(1L, "CPU", new BigDecimal("85"));
 
         when(ruleCache.getByMetricType("CPU")).thenReturn(Collections.singletonList(rwa));
-        when(alarmEventMapper.selectFiringByRuleAndDevice(anyLong(), anyLong())).thenReturn(null);
+        when(alarmEventMapper.selectFiringByRuleDeviceAndAndroid(anyLong(), anyLong(), any())).thenReturn(null);
         when(executorRegistry.getExecutor("LOG")).thenReturn(Optional.of(actionExecutor));
 
         // Act
@@ -84,7 +86,7 @@ class ThresholdEvaluatorTest {
         ArgumentCaptor<AlarmEvent> captor = ArgumentCaptor.forClass(AlarmEvent.class);
         verify(alarmEventMapper, times(1)).insert(captor.capture());
         assertEquals("FIRING", captor.getValue().getStatus());
-        verify(actionExecutor, times(1)).execute(any(), any(), any(), any());
+        verify(actionExecutor, times(1)).execute(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -100,7 +102,7 @@ class ThresholdEvaluatorTest {
         firing.setStatus("FIRING");
 
         when(ruleCache.getByMetricType("CPU")).thenReturn(Collections.singletonList(rwa));
-        when(alarmEventMapper.selectFiringByRuleAndDevice(anyLong(), anyLong())).thenReturn(firing);
+        when(alarmEventMapper.selectFiringByRuleDeviceAndAndroid(anyLong(), anyLong(), any())).thenReturn(firing);
 
         // Act
         evaluator.evaluate(device, Collections.singletonList(snapshot));
@@ -125,7 +127,7 @@ class ThresholdEvaluatorTest {
         when(ruleCache.getByMetricType("CPU")).thenReturn(Collections.singletonList(rwa));
         when(metricSnapshotMapper.selectRecentByDeviceAndType(anyLong(), anyString(), any(LocalDateTime.class)))
                 .thenReturn(Collections.singletonList(old));
-        when(alarmEventMapper.selectFiringByRuleAndDevice(anyLong(), anyLong())).thenReturn(null);
+        when(alarmEventMapper.selectFiringByRuleDeviceAndAndroid(anyLong(), anyLong(), any())).thenReturn(null);
 
         // Act
         evaluator.evaluate(device, Collections.singletonList(snapshot));
@@ -162,9 +164,9 @@ class ThresholdEvaluatorTest {
         ThresholdRule rule = rule("CPU", CompareOp.GT.name(), BigDecimal.ONE, "DURATION", 0, 0, ScopeType.DEVICE.name(), 1L);
 
         // Act & Assert
-        assertTrue(evaluator.matchScope(rule, device));
+        assertTrue(evaluator.matchScope(rule, device, null));
         device.setId(2L);
-        assertFalse(evaluator.matchScope(rule, device));
+        assertFalse(evaluator.matchScope(rule, device, null));
     }
 
     @Test
@@ -175,9 +177,9 @@ class ThresholdEvaluatorTest {
         ThresholdRule rule = rule("CPU", CompareOp.GT.name(), BigDecimal.ONE, "DURATION", 0, 0, ScopeType.GROUP.name(), 5L);
 
         // Act & Assert
-        assertTrue(evaluator.matchScope(rule, device));
+        assertTrue(evaluator.matchScope(rule, device, null));
         device.setGroupId(6L);
-        assertFalse(evaluator.matchScope(rule, device));
+        assertFalse(evaluator.matchScope(rule, device, null));
     }
 
     @Test
@@ -217,7 +219,7 @@ class ThresholdEvaluatorTest {
         snapshot.setMetricValue("STOPPED");
 
         when(ruleCache.getByMetricType("ANDROID_STATUS")).thenReturn(Collections.singletonList(rwa));
-        when(alarmEventMapper.selectFiringByRuleAndDevice(anyLong(), anyLong())).thenReturn(null);
+        when(alarmEventMapper.selectFiringByRuleDeviceAndAndroid(anyLong(), anyLong(), any())).thenReturn(null);
 
         // Act
         evaluator.evaluate(device, Collections.singletonList(snapshot));
@@ -247,7 +249,7 @@ class ThresholdEvaluatorTest {
         firing.setStatus("FIRING");
 
         when(ruleCache.getByMetricType("ANDROID_STATUS")).thenReturn(Collections.singletonList(rwa));
-        when(alarmEventMapper.selectFiringByRuleAndDevice(anyLong(), anyLong())).thenReturn(firing);
+        when(alarmEventMapper.selectFiringByRuleDeviceAndAndroid(anyLong(), anyLong(), any())).thenReturn(firing);
 
         // Act：规则期望 RUNNING 而实际 STOPPED → 不 breach → 已有告警应恢复
         evaluator.evaluate(device, Collections.singletonList(snapshot));
@@ -264,8 +266,8 @@ class ThresholdEvaluatorTest {
         rule.setScopeIds("3, 5,7");
 
         // Act & Assert
-        assertTrue(evaluator.matchScope(rule, device(5L, 1L)));
-        assertFalse(evaluator.matchScope(rule, device(2L, 1L)));
+        assertTrue(evaluator.matchScope(rule, device(5L, 1L), null));
+        assertFalse(evaluator.matchScope(rule, device(2L, 1L), null));
     }
 
     @Test
@@ -275,8 +277,89 @@ class ThresholdEvaluatorTest {
         ThresholdRule rule = rule("CPU", CompareOp.GT.name(), BigDecimal.ONE, "DURATION", 0, 0, ScopeType.DEVICE.name(), 1L);
 
         // Act & Assert
-        assertTrue(evaluator.matchScope(rule, device(1L, 1L)));
-        assertFalse(evaluator.matchScope(rule, device(2L, 1L)));
+        assertTrue(evaluator.matchScope(rule, device(1L, 1L), null));
+        assertFalse(evaluator.matchScope(rule, device(2L, 1L), null));
+    }
+
+    @Test
+    @DisplayName("指定安卓实例名的规则只匹配同名实例的快照")
+    void matchScopeAndroidName() {
+        // Arrange
+        ThresholdRule rule = rule("ANDROID_STATUS", CompareOp.NE.name(), null, "DURATION", 0, 0, ScopeType.DEVICE.name(), 1L);
+        rule.setScopeAndroidName("container_01");
+
+        // Act & Assert：设备匹配且实例名一致才命中
+        assertTrue(evaluator.matchScope(rule, device(1L, 1L), "container_01"));
+        assertFalse(evaluator.matchScope(rule, device(1L, 1L), "container_02"));
+        assertFalse(evaluator.matchScope(rule, device(1L, 1L), null));
+        assertFalse(evaluator.matchScope(rule, device(2L, 1L), "container_01"));
+    }
+
+    @Test
+    @DisplayName("告警已处于 FIRING 时不重复执行动作，仅刷新告警")
+    void actionsNotRepeatedWhileFiring() {
+        // Arrange：CPU 超标且已存在 FIRING 告警
+        Device device = device(1L, 1L);
+        ThresholdRule rule = rule("CPU", CompareOp.GT.name(), new BigDecimal("80"), "DURATION", 0, 0, ScopeType.ALL.name(), null);
+        ThresholdAction action = new ThresholdAction();
+        action.setActionType("OPERATION");
+        action.setOperationCode("REBOOT_HOST");
+        RuleCache.RuleWithActions rwa = new RuleCache.RuleWithActions(rule, Collections.singletonList(action));
+
+        MetricSnapshot snapshot = snapshot(1L, "CPU", new BigDecimal("85"));
+        AlarmEvent firing = new AlarmEvent();
+        firing.setId(9L);
+        firing.setStatus("FIRING");
+
+        when(ruleCache.getByMetricType("CPU")).thenReturn(Collections.singletonList(rwa));
+        when(alarmEventMapper.selectFiringByRuleDeviceAndAndroid(anyLong(), anyLong(), any())).thenReturn(firing);
+
+        // Act
+        evaluator.evaluate(device, Collections.singletonList(snapshot));
+
+        // Assert：仅更新告警时间，不新建告警也不执行动作（避免每个采集周期重复重启）
+        verify(alarmEventMapper, times(1)).updateById(firing);
+        verify(alarmEventMapper, never()).insert(any(AlarmEvent.class));
+        verify(actionExecutor, never()).execute(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("ANDROID_STATUS 连续次数判定按实例 extra 过滤历史采样")
+    void consecutiveModeFiltersHistoryByExtra() {
+        // Arrange：规则连续 2 次 NE RUNNING 触发；快照带 extra（实例 container_01）
+        Device device = device(1L, 1L);
+        ThresholdRule rule = rule("ANDROID_STATUS", CompareOp.NE.name(), null, "CONSECUTIVE", 0, 2, ScopeType.ALL.name(), null);
+        rule.setThresholdText("RUNNING");
+        RuleCache.RuleWithActions rwa = new RuleCache.RuleWithActions(rule, Collections.emptyList());
+
+        String extra = "{\"name\":\"container_01\"}";
+        MetricSnapshot snapshot = new MetricSnapshot();
+        snapshot.setDeviceId(1L);
+        snapshot.setMetricType("ANDROID_STATUS");
+        snapshot.setMetricValue("STOPPED");
+        snapshot.setExtra(extra);
+
+        MetricSnapshot older = new MetricSnapshot();
+        older.setDeviceId(1L);
+        older.setMetricType("ANDROID_STATUS");
+        older.setMetricValue("STOPPED");
+        older.setExtra(extra);
+
+        when(ruleCache.getByMetricType("ANDROID_STATUS")).thenReturn(Collections.singletonList(rwa));
+        when(metricSnapshotMapper.selectLatestByDeviceTypeAndExtra(anyLong(), anyString(), anyString(), anyInt()))
+                .thenReturn(java.util.Arrays.asList(snapshot, older));
+        when(alarmEventMapper.selectFiringByRuleDeviceAndAndroid(anyLong(), anyLong(), any())).thenReturn(null);
+
+        // Act
+        evaluator.evaluate(device, Collections.singletonList(snapshot));
+
+        // Assert：使用了按 extra 过滤的查询，且告警记录实例名
+        verify(metricSnapshotMapper, times(1))
+                .selectLatestByDeviceTypeAndExtra(anyLong(), anyString(), anyString(), anyInt());
+        verify(metricSnapshotMapper, never()).selectLatestByDeviceAndType(anyLong(), anyString(), anyInt());
+        ArgumentCaptor<AlarmEvent> captor = ArgumentCaptor.forClass(AlarmEvent.class);
+        verify(alarmEventMapper, times(1)).insert(captor.capture());
+        assertEquals("container_01", captor.getValue().getAndroidName());
     }
 
     private Device device(Long id, Long groupId) {

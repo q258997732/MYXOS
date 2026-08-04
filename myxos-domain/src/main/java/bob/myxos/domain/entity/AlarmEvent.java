@@ -27,6 +27,9 @@ public class AlarmEvent {
     /** 设备 ID */
     private Long deviceId;
 
+    /** 安卓实例名（ANDROID_STATUS 触发时记录，按实例维度去重告警） */
+    private String androidName;
+
     /** 指标类型 */
     private String metricType;
 

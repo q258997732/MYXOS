@@ -48,7 +48,11 @@
               <el-option label="不等于" value="NE" />
               <el-option label="包含" value="CONTAINS" />
             </el-select>
-            <el-input v-model="form.thresholdText" placeholder="目标文本，如 STOPPED" maxlength="255" style="flex: 1; margin-left: 8px" />
+            <el-select v-if="form.metricType === 'ANDROID_STATUS'" v-model="form.thresholdText"
+              placeholder="目标状态" style="flex: 1; margin-left: 8px">
+              <el-option v-for="s in androidStatusOptions" :key="s.value" :label="s.label" :value="s.value" />
+            </el-select>
+            <el-input v-else v-model="form.thresholdText" placeholder="目标文本，如 STOPPED" maxlength="255" style="flex: 1; margin-left: 8px" />
           </div>
           <!-- 数值指标：按数值比较 -->
           <div v-else class="condition-row">
@@ -101,6 +105,11 @@
             placeholder="请选择设备（可多选）" filterable style="width: 100%">
             <el-option v-for="d in devices" :key="d.id" :label="`${d.name || d.ip} (${d.ip}:${d.port})`" :value="d.id" />
           </el-select>
+        </el-form-item>
+
+        <el-form-item label="实例名称" v-if="form.metricType === 'ANDROID_STATUS'">
+          <el-input v-model="form.scopeAndroidName" placeholder="留空表示作用范围内的全部实例" maxlength="128" style="max-width: 320px" />
+          <span class="hint-text">填写后仅监控该名称的安卓实例</span>
         </el-form-item>
 
         <!-- 动作配置 -->
@@ -170,7 +179,7 @@
     <!-- 操作参数示例弹窗 -->
     <el-dialog v-model="paramHelpVisible" title="操作参数示例" width="680px" align-center append-to-body>
       <el-alert type="info" :closable="false" show-icon class="param-help-tip"
-        title="操作参数为 JSON 字符串；name 为安卓容器名称，REBOOT_HOST 等主机级操作无需参数填 {} 即可" />
+        title="操作参数为 JSON 字符串；name 为安卓容器名称，REBOOT_HOST 等主机级操作无需参数填 {} 即可；阈值自动触发时 name 留空或填 ${name} 会自动替换为触发告警的实例名" />
       <el-table :data="paramHelpList" size="small" stripe>
         <el-table-column prop="label" label="执行操作" width="130" />
         <el-table-column prop="example" label="参数 JSON 示例" min-width="260">
@@ -219,6 +228,14 @@ const statusMetricTypes = [
 const STATE_METRIC_TYPES = ['ONLINE', 'OFFLINE', 'ANDROID_ONLINE', 'ANDROID_OFFLINE']
 /** 字符类指标：按字符串比较 */
 const STRING_METRIC_TYPES = ['ANDROID_STATUS']
+
+/** 安卓实例状态选项（采集侧统一归一化为这四个值） */
+const androidStatusOptions = [
+  { value: 'RUNNING', label: '运行中 (RUNNING)' },
+  { value: 'STOPPED', label: '已停止 (STOPPED)' },
+  { value: 'TRANSITION', label: '过渡中 (TRANSITION)' },
+  { value: 'UNKNOWN', label: '未知 (UNKNOWN)' }
+]
 
 const METRIC_LABELS = {}
 ;[...numericMetricTypes, ...statusMetricTypes].forEach(t => { METRIC_LABELS[t.value] = t.label })
@@ -307,6 +324,7 @@ const form = reactive({
   scopeType: 'ALL',
   scopeId: null,
   scopeIds: [],
+  scopeAndroidName: '',
   actions: []
 })
 
@@ -393,7 +411,8 @@ const loadDetail = async () => {
       consecutiveCount: rule.consecutiveCount || 2,
       scopeType: rule.scopeType || 'ALL',
       scopeId: rule.scopeId || null,
-      scopeIds: parseScopeIds(rule)
+      scopeIds: parseScopeIds(rule),
+      scopeAndroidName: rule.scopeAndroidName || ''
     })
     form.actions.splice(0, form.actions.length)
     const actions = data.actions || []
@@ -462,6 +481,8 @@ const save = async () => {
       scopeId: form.scopeType === 'GROUP' ? form.scopeId
         : (form.scopeType === 'DEVICE' ? (form.scopeIds[0] || null) : null),
       scopeIds: form.scopeType === 'DEVICE' ? form.scopeIds : null,
+      scopeAndroidName: form.metricType === 'ANDROID_STATUS' && form.scopeAndroidName.trim()
+        ? form.scopeAndroidName.trim() : null,
       actions: form.actions
     }
     if (isEdit.value) {

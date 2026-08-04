@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
@@ -42,6 +43,19 @@ public class RuleCache {
     @PostConstruct
     public void init() {
         refresh();
+    }
+
+    /**
+     * 定时刷新：主服务对阈值规则的增删改通过共享数据库生效，
+     * 采集服务按固定间隔重新加载，避免重启后才生效
+     */
+    @Scheduled(fixedDelayString = "${myxos.collector.rule-refresh-ms:60000}")
+    public void scheduledRefresh() {
+        try {
+            refresh();
+        } catch (Exception e) {
+            log.error("定时刷新阈值规则缓存失败", e);
+        }
     }
 
     /**

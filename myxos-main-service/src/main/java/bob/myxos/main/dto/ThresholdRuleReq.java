@@ -66,6 +66,10 @@ public class ThresholdRuleReq {
     /** 设备 ID 列表（scopeType=DEVICE 多选时使用，优先于 scopeId） */
     private List<Long> scopeIds;
 
+    /** 安卓实例名（仅 metricType=ANDROID_STATUS 时有效，为空表示范围内全部实例） */
+    @Size(max = 128, message = "安卓实例名长度不能超过 128")
+    private String scopeAndroidName;
+
     /** 动作列表 */
     @Valid
     private List<ThresholdActionReq> actions;

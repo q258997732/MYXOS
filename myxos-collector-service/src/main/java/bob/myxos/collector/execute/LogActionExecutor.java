@@ -30,13 +30,13 @@ public class LogActionExecutor implements ActionExecutor {
     }
 
     @Override
-    public void execute(ThresholdRule rule, ThresholdAction action, Device device, Long alarmId) {
+    public void execute(ThresholdRule rule, ThresholdAction action, Device device, Long alarmId, String androidName) {
         ActionLog actionLog = new ActionLog();
         actionLog.setAlarmId(alarmId);
         actionLog.setDeviceId(device == null ? null : device.getId());
         actionLog.setActionType(ActionType.LOG.name());
         actionLog.setLogLevel(action.getLogLevel());
-        actionLog.setMessage(buildMessage(rule, action, device));
+        actionLog.setMessage(buildMessage(rule, action, device, androidName));
         actionLog.setCreatedAt(LocalDateTime.now());
         actionLogMapper.insert(actionLog);
     }
@@ -44,13 +44,16 @@ public class LogActionExecutor implements ActionExecutor {
     /**
      * 构造日志内容
      */
-    private String buildMessage(ThresholdRule rule, ThresholdAction action, Device device) {
+    private String buildMessage(ThresholdRule rule, ThresholdAction action, Device device, String androidName) {
         String deviceName = device == null ? "unknown" : (device.getName() == null ? String.valueOf(device.getId()) : device.getName());
-        return String.format("阈值触发：rule=%s, device=%s, metric=%s, op=%s, threshold=%s",
+        String threshold = rule == null ? "?"
+                : (rule.getThresholdValue() != null ? rule.getThresholdValue().toPlainString() : rule.getThresholdText());
+        return String.format("阈值触发：rule=%s, device=%s, android=%s, metric=%s, op=%s, threshold=%s",
                 rule == null ? "?" : rule.getName(),
                 deviceName,
+                androidName == null ? "-" : androidName,
                 rule == null ? "?" : rule.getMetricType(),
                 rule == null ? "?" : rule.getCompareOp(),
-                rule == null || rule.getThresholdValue() == null ? "?" : rule.getThresholdValue().toPlainString());
+                threshold == null ? "?" : threshold);
     }
 }

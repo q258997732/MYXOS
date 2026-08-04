@@ -58,6 +58,9 @@ public class ThresholdRule {
     /** 设备 ID 列表（逗号分隔，scopeType=DEVICE 且多选时优先于 scopeId） */
     private String scopeIds;
 
+    /** 安卓实例名（仅 ANDROID_STATUS 指标生效，为空表示范围内全部实例） */
+    private String scopeAndroidName;
+
     /** 是否启用：1 启用，0 禁用 */
     private Integer enabled;
 
