@@ -3,6 +3,7 @@ package bob.myxos.collector.execute;
 import bob.myxos.common.enums.OperationCode;
 import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.OpTask;
+import bob.myxos.domain.mapper.ActionLogMapper;
 import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.domain.mapper.OpTaskMapper;
 import bob.myxos.mytos.MytosClient;
@@ -43,12 +44,14 @@ class OpTaskRunnerFactoryTest {
     private MytosClientFactory clientFactory;
     @Mock
     private ObjectMapper objectMapper;
+    @Mock
+    private ActionLogMapper actionLogMapper;
 
     private OpTaskRunnerFactory factory;
 
     @BeforeEach
     void setUp() {
-        factory = new OpTaskRunnerFactory(opTaskMapper, deviceMapper, clientFactory, objectMapper);
+        factory = new OpTaskRunnerFactory(opTaskMapper, deviceMapper, clientFactory, objectMapper, actionLogMapper);
     }
 
     @Test
