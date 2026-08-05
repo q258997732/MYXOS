@@ -356,6 +356,32 @@ class ThresholdEvaluatorTest {
     }
 
     @Test
+    @DisplayName("绑定采集快照应优先使用 androidName 匹配实例范围并写入告警")
+    void bindingSnapshotUsesAndroidNameBeforeLegacyExtra() {
+        Device device = device(1L, 1L);
+        ThresholdRule rule = rule("ANDROID_STATUS", CompareOp.EQ.name(), null, "DURATION", 0, 0,
+                ScopeType.ALL.name(), null);
+        rule.setScopeAndroidName("container_01");
+        rule.setThresholdText("STOPPED");
+        MetricSnapshot snapshot = new MetricSnapshot();
+        snapshot.setDeviceId(1L);
+        snapshot.setMetricType("ANDROID_STATUS");
+        snapshot.setMetricCode("ANDROID_STATUS");
+        snapshot.setAndroidName("container_01");
+        snapshot.setMetricValue("STOPPED");
+
+        when(ruleCache.getByMetricCode("ANDROID_STATUS"))
+                .thenReturn(Collections.singletonList(new RuleCache.RuleWithActions(rule, Collections.emptyList())));
+        when(alarmEventMapper.selectFiringByRuleDeviceAndAndroid(anyLong(), anyLong(), any())).thenReturn(null);
+
+        evaluator.evaluate(device, Collections.singletonList(snapshot));
+
+        ArgumentCaptor<AlarmEvent> captor = ArgumentCaptor.forClass(AlarmEvent.class);
+        verify(alarmEventMapper).insert(captor.capture());
+        assertEquals("container_01", captor.getValue().getAndroidName());
+    }
+
+    @Test
     @DisplayName("告警已处于 FIRING 时不重复执行动作，仅刷新告警")
     void actionsNotRepeatedWhileFiring() {
         // Arrange：CPU 超标且已存在 FIRING 告警

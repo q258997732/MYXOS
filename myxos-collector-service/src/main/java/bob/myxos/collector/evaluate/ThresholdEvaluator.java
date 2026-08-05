@@ -117,6 +117,9 @@ public class ThresholdEvaluator {
      * @return 安卓实例名，非实例类快照返回 null
      */
     private String extractAndroidName(MetricSnapshot snapshot) {
+        if (snapshot.getAndroidName() != null && !snapshot.getAndroidName().trim().isEmpty()) {
+            return snapshot.getAndroidName().trim();
+        }
         String extra = snapshot.getExtra();
         if (extra == null || extra.isEmpty()) {
             return null;
