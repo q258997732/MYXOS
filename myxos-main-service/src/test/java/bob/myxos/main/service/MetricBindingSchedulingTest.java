@@ -79,7 +79,7 @@ class MetricBindingSchedulingTest {
     }
 
     @Test
-    void 重新启用时已有计划不得被覆盖() {
+    void 禁用绑定重新启用时应覆盖未来计划() {
         LocalDateTime planned = LocalDateTime.now().plusHours(1);
         MetricBinding existing = new MetricBinding();
         existing.setId(9L);
