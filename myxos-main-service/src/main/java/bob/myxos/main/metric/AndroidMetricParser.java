@@ -14,8 +14,8 @@ public final class AndroidMetricParser {
     private static final Pattern MEM_TOTAL_PATTERN = Pattern.compile("(?m)^MemTotal:\\s*(\\d+)\\s*kB\\s*$");
     private static final Pattern MEM_AVAILABLE_PATTERN = Pattern.compile("(?m)^MemAvailable:\\s*(\\d+)\\s*kB\\s*$");
     private static final Pattern TASK_TOTAL_PATTERN = Pattern.compile("(?im)^Tasks:\\s*(\\d+)\\s+total(?:,|\\s|$)");
-    private static final Pattern CPU_TOTAL_PATTERN = Pattern.compile("(?im)^\\s*(\\d+(?:\\.\\d+)?)%cpu\\b");
-    private static final Pattern CPU_IDLE_PATTERN = Pattern.compile("(?i)(\\d+(?:\\.\\d+)?)%idle\\b");
+    private static final Pattern CPU_USAGE_PATTERN = Pattern.compile(
+            "(?im)^\\s*(\\d+(?:\\.\\d+)?)%cpu\\b[^\\r\\n]*?(\\d+(?:\\.\\d+)?)%idle\\b");
 
     public Optional<Long> parseMemTotalKb(String output) {
         return parseLong(MEM_TOTAL_PATTERN, output);
@@ -44,20 +44,27 @@ public final class AndroidMetricParser {
         if (output == null) {
             return Optional.empty();
         }
-        Matcher totalMatcher = CPU_TOTAL_PATTERN.matcher(output);
-        Matcher idleMatcher = CPU_IDLE_PATTERN.matcher(output);
-        if (!totalMatcher.find() || !idleMatcher.find()) {
+        Matcher matcher = CPU_USAGE_PATTERN.matcher(output);
+        if (!matcher.find()) {
             return Optional.empty();
         }
         try {
-            BigDecimal total = new BigDecimal(totalMatcher.group(1));
-            BigDecimal idle = new BigDecimal(idleMatcher.group(1));
-            if (total.compareTo(BigDecimal.ZERO) <= 0) {
+            BigDecimal total = new BigDecimal(matcher.group(1));
+            BigDecimal idle = new BigDecimal(matcher.group(2));
+            if (total.compareTo(BigDecimal.ZERO) < 0 || idle.compareTo(BigDecimal.ZERO) < 0
+                    || idle.compareTo(total) > 0) {
                 return Optional.empty();
             }
-            return Optional.of(total.subtract(idle)
+            if (total.compareTo(BigDecimal.ZERO) == 0) {
+                return Optional.of(BigDecimal.ZERO.setScale(2));
+            }
+            BigDecimal usage = total.subtract(idle)
                     .multiply(BigDecimal.valueOf(100))
-                    .divide(total, 2, RoundingMode.HALF_UP));
+                    .divide(total, 2, RoundingMode.HALF_UP);
+            if (usage.compareTo(BigDecimal.ZERO) < 0 || usage.compareTo(BigDecimal.valueOf(100)) > 0) {
+                return Optional.empty();
+            }
+            return Optional.of(usage);
         } catch (NumberFormatException ignored) {
             return Optional.empty();
         }

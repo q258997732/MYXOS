@@ -44,7 +44,7 @@ public final class MetricDefinitionRegistry {
                 definition(TASK_TOTAL, "任务总数", "NUMBER", "进程", "个", true),
                 definition(RECENT_APPS, "最近应用", "STRING", "应用", null, false),
                 new MetricDefinition(ANDROID_STATUS, "安卓状态", "ANDROID_INSTANCE", "ENUM", "状态", null,
-                        ANDROID_STATUS, false)
+                        null, false)
         ));
     }
 
