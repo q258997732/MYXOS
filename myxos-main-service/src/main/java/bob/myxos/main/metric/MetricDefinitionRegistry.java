@@ -38,12 +38,12 @@ public final class MetricDefinitionRegistry {
         DEFINITIONS = Collections.unmodifiableList(Arrays.asList(
                 definition(ANDROID_VERSION, "安卓版本", "STRING", "系统", null, true),
                 definition(ANDROID_MODEL, "安卓型号", "STRING", "系统", null, false),
-                definition(MEM_TOTAL_KB, "内存总量", "INTEGER", "内存", "KB", true),
-                definition(MEM_AVAILABLE_KB, "可用内存", "INTEGER", "内存", "KB", true),
-                definition(CPU_USAGE_PERCENT, "CPU使用率", "DECIMAL", "CPU", "%", true),
-                definition(TASK_TOTAL, "任务总数", "INTEGER", "进程", "个", true),
+                definition(MEM_TOTAL_KB, "内存总量", "NUMBER", "内存", "KB", true),
+                definition(MEM_AVAILABLE_KB, "可用内存", "NUMBER", "内存", "KB", true),
+                definition(CPU_USAGE_PERCENT, "CPU使用率", "NUMBER", "CPU", "%", true),
+                definition(TASK_TOTAL, "任务总数", "NUMBER", "进程", "个", true),
                 definition(RECENT_APPS, "最近应用", "STRING", "应用", null, false),
-                new MetricDefinition(ANDROID_STATUS, "安卓状态", "ANDROID", "ENUM", "状态", null,
+                new MetricDefinition(ANDROID_STATUS, "安卓状态", "ANDROID_INSTANCE", "ENUM", "状态", null,
                         ANDROID_STATUS, false)
         ));
     }
@@ -78,7 +78,7 @@ public final class MetricDefinitionRegistry {
     private static MetricDefinition definition(String code, String name, String valueType,
                                                String category, String unit,
                                                boolean thresholdEnabled) {
-        return new MetricDefinition(code, name, "ANDROID", valueType, category, unit, code,
+        return new MetricDefinition(code, name, "ANDROID_INSTANCE", valueType, category, unit, code,
                 thresholdEnabled);
     }
 }
