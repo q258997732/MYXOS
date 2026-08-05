@@ -91,6 +91,23 @@ class MetricBindingSchedulingTest {
 
         ArgumentCaptor<MetricBinding> captor = ArgumentCaptor.forClass(MetricBinding.class);
         verify(bindingMapper).updateById(captor.capture());
+        assertFalse(captor.getValue().getNextCollectAt().isAfter(LocalDateTime.now()));
+        assertFalse(planned.equals(captor.getValue().getNextCollectAt()));
+    }
+
+    @Test
+    void enabledBindingUpdateKeepsFutureSchedule() {
+        LocalDateTime planned = LocalDateTime.now().plusHours(1);
+        MetricBinding existing = new MetricBinding();
+        existing.setId(9L);
+        existing.setEnabled(1);
+        existing.setNextCollectAt(planned);
+        prepareForSave(existing);
+
+        service().saveMetricBindings(1L, null, request(1));
+
+        ArgumentCaptor<MetricBinding> captor = ArgumentCaptor.forClass(MetricBinding.class);
+        verify(bindingMapper).updateById(captor.capture());
         assertEquals(planned, captor.getValue().getNextCollectAt());
     }
 

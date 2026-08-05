@@ -770,9 +770,10 @@ public class DeviceServiceImpl implements DeviceService {
         MetricBinding exists = metricBindingMapper.selectOne(new LambdaQueryWrapper<MetricBinding>().eq(MetricBinding::getDeviceId, deviceId).eq(MetricBinding::getAndroidName, androidName).eq(MetricBinding::getMetricCode, metricCode).eq(MetricBinding::getDeleted, 0));
         if (exists != null) {
             int effectiveEnabled = enabled == null ? exists.getEnabled() : enabled;
+            boolean enabling = !Integer.valueOf(1).equals(exists.getEnabled()) && effectiveEnabled == 1;
             exists.setEnabled(effectiveEnabled);
             exists.setIntervalSec(intervalSec == null ? exists.getIntervalSec() : intervalSec);
-            if (effectiveEnabled == 1 && exists.getNextCollectAt() == null) {
+            if (enabling || (effectiveEnabled == 1 && exists.getNextCollectAt() == null)) {
                 exists.setNextCollectAt(LocalDateTime.now());
             }
             metricBindingMapper.updateById(exists);
