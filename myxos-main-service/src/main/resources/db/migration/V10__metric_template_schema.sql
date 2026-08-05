@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS metric_binding (
     target_type       VARCHAR(32)  NOT NULL,
     metric_code       VARCHAR(64)  NOT NULL,
     enabled           TINYINT      NOT NULL DEFAULT 1,
-    interval_sec      INT          NULL,
+    interval_sec      INT          NOT NULL DEFAULT 60,
     last_collected_at DATETIME     NULL,
     next_collect_at   DATETIME     NULL,
     who_created       VARCHAR(64)  NOT NULL DEFAULT '',
