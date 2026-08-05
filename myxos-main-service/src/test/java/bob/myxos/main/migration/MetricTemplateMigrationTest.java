@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -50,6 +51,8 @@ class MetricTemplateMigrationTest {
         String 脚本内容 = 读取脚本();
 
         assertTrue(脚本内容.contains("android_name    VARCHAR(128) NOT NULL DEFAULT ''"));
+        assertTrue(脚本内容.contains("interval_sec      INT          NULL,"));
+        assertFalse(脚本内容.contains("interval_sec      INT          NOT NULL DEFAULT 60"));
         assertTrue(脚本内容.contains("UNIQUE KEY uk_metric_binding_target (device_id, android_name, metric_code, deleted)"));
         assertTrue(脚本内容.contains("INDEX idx_metric_binding_due (enabled, next_collect_at, deleted)"));
     }
