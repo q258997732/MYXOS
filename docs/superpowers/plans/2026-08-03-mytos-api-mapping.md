@@ -1,6 +1,6 @@
 # MYTOS 监控/运维接口映射规划
 
-> 依据 `mytos_real_openapi.json` 与前端页面规划整理，**已按用户最终确认范围定稿**。本文件为实施依据，相关内容已同步写入 `CLAUDE.md`。
+> 依据 `mytos_real_openapi.json` 与前端页面规划整理，**已按用户最终确认范围定稿**。本文件为实施依据，相关内容已同步写入 `AGENTS.md`。
 
 ---
 
@@ -125,6 +125,6 @@ public enum OperationCode {
 
 本规划定稿后，已同步更新：
 
-- `CLAUDE.md`：新增"MYTOS 监控/运维接口映射"章节。
+- `AGENTS.md`：新增"MYTOS 监控/运维接口映射"章节。
 - `docs/superpowers/plans/2026-07-29-mytos-monitor.md`：任务 5 `MytosClient` DTO/方法、任务 11 `OperationCode` 与 `OpTaskRunner` 映射。
 - `docs/superpowers/plans/2026-07-29-system-design.md`：1.3.4 手动操作面板操作类型说明。

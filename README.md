@@ -53,6 +53,12 @@ export MYXOS_INTERNAL_TOKEN="your-internal-token-here"
 
 ### 4. 本地启动
 
+后端服务模块存在内部 Maven 依赖；首次启动或前端依赖发生变化后，请先在根目录执行以下命令，将全部模块安装到本地仓库并生成前端构建产物：
+
+```bash
+mvn clean install -DskipTests
+```
+
 启动主服务：
 
 ```bash
@@ -69,13 +75,28 @@ mvn -pl myxos-collector-service spring-boot:run -DskipTests
 
 系统首次启动时会通过 Flyway 初始化管理员账号，初始密码请在首次登录后立刻修改。
 
+前端可以独立开发和验证。在另一个终端中执行：
+
+```bash
+cd myxos-ui
+npm install
+npm run dev
+```
+
+Vite 开发服务器默认访问地址为 http://localhost:5173。构建前端并验证构建结果：
+
+```bash
+cd myxos-ui
+npm run build
+```
+
 ### 5. 全量打包
 
 ```bash
 mvn clean package -DskipTests
 ```
 
-打包后主服务 jar 位于 `myxos-main-service/target/`，采集服务 jar 位于 `myxos-collector-service/target/`。
+该命令会构建五个后端模块，并通过 `myxos-main-service` 的 `frontend-maven-plugin` 安装 Node.js 和 npm、构建 `myxos-ui`，再将前端产物复制到主服务的静态资源目录。打包后主服务 jar 位于 `myxos-main-service/target/`，采集服务 jar 位于 `myxos-collector-service/target/`。
 
 ## Docker 部署
 
@@ -105,7 +126,7 @@ docker-compose down
 
 ## 测试
 
-运行所有单元测试与集成测试：
+运行全部后端单元测试与集成测试：
 
 ```bash
 mvn test
@@ -118,6 +139,13 @@ mvn verify
 ```
 
 报告位于各模块 `target/site/jacoco/index.html`。
+
+前端当前未定义独立测试脚本，使用以下命令完成构建验证：
+
+```bash
+cd myxos-ui
+npm run build
+```
 
 ## 主要功能
 

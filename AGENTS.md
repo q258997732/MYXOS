@@ -8,49 +8,30 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## 项目状态
 
-当前仓库是单模块 Spring Boot 项目（Spring Boot 4.1.1-SNAPSHOT / Java 17），仅包含一个空的启动类 `bob.myxos.MyxosApplication`。项目已规划改造为 JDK 1.8 + Spring Boot 2.7.x 的多模块 Maven 系统，详见 `docs/superpowers/plans/2026-07-29-mytos-monitor.md`。
+当前仓库为 Spring Boot 2.7.18、Java 1.8 的多模块 Maven 系统，包含五个后端模块和独立的 `myxos-ui` Vue 前端模块。主服务与采集服务通过共享 MySQL 数据库通信；主服务端口为 8080，采集服务端口为 8081。
 
-## 目标架构
+## 模块结构
 
-改造后采用以下五模块结构：
+当前系统采用以下模块结构：
 
 - `myxos-common`：公共枚举、统一响应、工具类
 - `myxos-domain`：实体、Mapper、MyBatis-Plus 配置、审计字段填充
 - `myxos-mytos-client`：MYTOS 设备 HTTP API 客户端（OkHttp）
 - `myxos-main-service`：Web 服务、JWT 鉴权、管理 API、前端静态资源
 - `myxos-collector-service`：定时采集、阈值判定、动作执行、数据清理
-
-主服务与采集服务通过共享 MySQL 数据库通信；主服务端口 8080，采集服务端口 8081。
+- `myxos-ui`：基于 Vue 3、Vite 的管理后台
 
 ## 常用命令
 
-### 当前单模块项目
-
 ```bash
-# 全量构建
+# 构建全部后端模块，并执行前端构建
 mvn clean package
 
-# 跳过测试构建
-mvn clean package -DskipTests
+# 跳过测试安装全部模块到本地仓库，并执行前端构建
+mvn clean install -DskipTests
 
-# 运行所有测试
+# 运行全部后端测试
 mvn test
-
-# 运行单个测试类
-mvn test -Dtest=MyxosApplicationTests
-
-# 运行单个测试方法
-mvn test -Dtest=MyxosApplicationTests#contextLoads
-
-# 启动当前应用
-mvn spring-boot:run
-```
-
-### 多模块改造后
-
-```bash
-# 编译并安装 common 到本地仓库
-mvn -pl myxos-common clean install -DskipTests
 
 # 启动主服务
 mvn -pl myxos-main-service spring-boot:run -DskipTests
@@ -58,8 +39,13 @@ mvn -pl myxos-main-service spring-boot:run -DskipTests
 # 启动采集服务
 mvn -pl myxos-collector-service spring-boot:run -DskipTests
 
-# 打包所有模块
-mvn clean package -DskipTests
+# 安装前端依赖并启动前端开发服务器
+cd myxos-ui
+npm install
+npm run dev
+
+# 构建前端并作为前端验证
+npm run build
 ```
 
 ## 数据库约定
