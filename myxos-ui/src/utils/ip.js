@@ -1,24 +1,32 @@
 export function isValidIPv4(ip) {
-  if (!ip) return false
+  if (typeof ip !== 'string' || !ip) return false
   const parts = ip.split('.')
   if (parts.length !== 4) return false
   return parts.every(p => {
-    const n = parseInt(p, 10)
-    return p !== '' && !isNaN(n) && n >= 0 && n <= 255
+    if (!/^\d+$/.test(p)) return false
+    const n = Number(p)
+    return n >= 0 && n <= 255
   })
 }
 
 function ipToLong(ip) {
-  return ip.split('.').reduce((acc, p) => (acc << 8) + parseInt(p, 10), 0) >>> 0
+  return ip.split('.').reduce((acc, p) => acc * 256 + parseInt(p, 10), 0)
 }
 
 function longToIp(long) {
-  return [(long >>> 24), (long >> 16) & 0xff, (long >> 8) & 0xff, long & 0xff].join('.')
+  return [
+    Math.floor(long / 16777216),
+    Math.floor(long / 65536) % 256,
+    Math.floor(long / 256) % 256,
+    long % 256
+  ].join('.')
 }
 
 const MAX_RANGE_SIZE = 256
 
 export function ipRangeToCidr(startIp, endIp) {
+  if (!isValidIPv4(startIp) || !isValidIPv4(endIp)) return []
+
   const start = ipToLong(startIp)
   const end = ipToLong(endIp)
   if (start > end) return []
@@ -27,26 +35,16 @@ export function ipRangeToCidr(startIp, endIp) {
   }
   const cidrs = []
   let current = start
-  let safety = 0
-  while (current <= end && safety < 1000) {
-    safety++
-    let mask = 32
-    while (mask > 0) {
-      const bits = 32 - mask
-      const rangeStart = (current >> bits) << bits
-      const rangeEnd = rangeStart + (1 << bits) - 1
-      if (rangeStart < current || rangeEnd > end) {
-        mask++
-        break
-      }
-      mask--
+  while (current <= end) {
+    const remaining = end - current + 1
+    let blockSize = 1
+
+    while (blockSize * 2 <= remaining && current % (blockSize * 2) === 0) {
+      blockSize *= 2
     }
-    const finalMask = mask === 32 ? 32 : mask + 1
-    const bits = 32 - finalMask
-    const rangeStart = (current >> bits) << bits
-    const rangeEnd = rangeStart + (1 << bits) - 1
-    cidrs.push(longToIp(rangeStart) + '/' + finalMask)
-    current = rangeEnd + 1
+
+    cidrs.push(longToIp(current) + '/' + (32 - Math.log2(blockSize)))
+    current += blockSize
   }
   return cidrs
 }

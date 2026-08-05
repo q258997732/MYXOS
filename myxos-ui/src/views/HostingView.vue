@@ -158,7 +158,7 @@
     </el-card>
 
     <!-- 发现任务详情抽屉 -->
-    <el-drawer v-model="detailVisible" title="发现任务详情" size="600px">
+    <el-drawer v-model="detailVisible" title="发现任务详情" size="600px" @closed="resetIpResultFilters">
       <el-descriptions v-if="currentTask" :column="2" border size="small">
         <el-descriptions-item label="CIDR">{{ currentTask.cidr }}</el-descriptions-item>
         <el-descriptions-item label="状态">
@@ -171,15 +171,39 @@
       </el-descriptions>
 
       <el-divider content-position="left">逐 IP 结果</el-divider>
-      <el-table :data="taskDetail.ipResults || []" size="small" stripe max-height="500">
-        <el-table-column prop="ip" label="IP" width="140" />
-        <el-table-column prop="port" label="端口" width="80" />
-        <el-table-column prop="result" label="结果" width="100">
+      <el-table :data="filteredIpResults" size="small" stripe max-height="500" @filter-change="handleIpResultFilterChange">
+        <el-table-column prop="ip" width="160">
+          <template #header>
+            <el-input v-model="ipResultFilters.ip" size="small" clearable placeholder="筛选 IP" @click.stop />
+          </template>
+        </el-table-column>
+        <el-table-column
+          prop="port"
+          label="端口"
+          width="100"
+          column-key="port"
+          :filters="ipResultPortOptions"
+          :filtered-value="ipResultFilters.port"
+          :filter-method="allowIpResultFilter"
+        />
+        <el-table-column
+          prop="result"
+          label="结果"
+          width="120"
+          column-key="result"
+          :filters="ipResultResultOptions"
+          :filtered-value="ipResultFilters.result"
+          :filter-method="allowIpResultFilter"
+        >
           <template #default="{ row }">
             <el-tag :type="resultTagType(row.result)" size="small">{{ row.result }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="message" label="说明" show-overflow-tooltip />
+        <el-table-column prop="message" show-overflow-tooltip>
+          <template #header>
+            <el-input v-model="ipResultFilters.message" size="small" clearable placeholder="筛选说明" @click.stop />
+          </template>
+        </el-table-column>
       </el-table>
     </el-drawer>
   </div>
@@ -195,6 +219,7 @@ import { useUserStore } from '@/store'
 import { authApi } from '@/api'
 import { formatDateTime } from '@/utils/date'
 import { isValidIPv4, ipRangeToCidr } from '@/utils/ip'
+import { filterIpResults, submitRangeDiscover } from '@/utils/discover'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -227,6 +252,28 @@ const runningTask = computed(() => {
 const detailVisible = ref(false)
 const currentTask = ref(null)
 const taskDetail = reactive({ addedCount: 0, duplicateCount: 0, failedCount: 0, ipResults: [] })
+const ipResultFilters = reactive({ ip: '', port: [], result: [], message: '' })
+
+const filteredIpResults = computed(() => filterIpResults(taskDetail.ipResults || [], ipResultFilters))
+
+const ipResultPortOptions = computed(() => Array.from(new Set(
+  (taskDetail.ipResults || []).map(row => row.port).filter(port => port !== undefined && port !== null)
+)).map(port => ({ text: String(port), value: port })))
+
+const ipResultResultOptions = computed(() => Array.from(new Set(
+  (taskDetail.ipResults || []).map(row => row.result).filter(Boolean)
+)).map(result => ({ text: result, value: result })))
+
+const resetIpResultFilters = () => {
+  Object.assign(ipResultFilters, { ip: '', port: [], result: [], message: '' })
+}
+
+const allowIpResultFilter = () => true
+
+const handleIpResultFilterChange = (filters) => {
+  ipResultFilters.port = filters.port || []
+  ipResultFilters.result = filters.result || []
+}
 
 const statusType = (status) => {
   switch (status) {
@@ -298,11 +345,8 @@ function buildDiscoverPayload() {
   if (!cidrs || cidrs.length === 0) {
     throw new Error('IP 范围无效')
   }
-  if (cidrs.length > 1) {
-    throw new Error('IP 范围跨多个 CIDR，请拆分或使用 CIDR 输入')
-  }
   return {
-    cidr: cidrs[0],
+    cidrs,
     portFrom: discoverForm.portFrom,
     portTo: discoverForm.portTo
   }
@@ -312,12 +356,35 @@ const submitDiscover = async () => {
   discoverSubmitting.value = true
   try {
     const payload = buildDiscoverPayload()
-    await discoverApi.scan(payload)
-    ElMessage.success('扫描任务已提交')
+    if (discoverForm.discoverMode === 'cidr') {
+      await discoverApi.scan(payload)
+      ElMessage.success('已提交 1 个扫描任务')
+    } else {
+      const result = await submitRangeDiscover(
+        discoverApi.scan,
+        discoverForm.startIp,
+        discoverForm.endIp,
+        payload.portFrom,
+        payload.portTo
+      )
+      ElMessage.success(`已提交 ${result.submittedCount} 个扫描任务`)
+    }
     loadTasks()
     startRefresh()
   } catch (e) {
-    ElMessage.error(e.message || '提交失败')
+    if (Object.prototype.hasOwnProperty.call(e, 'submittedCount')) {
+      const reason = e.response?.data?.message || e.message || '提交失败'
+      ElMessage.error(`已提交 ${e.submittedCount} 个扫描任务，后续提交失败：${reason}`)
+      if (e.submittedCount > 0) {
+        loadTasks()
+        startRefresh()
+      }
+    } else if (discoverForm.discoverMode === 'cidr') {
+      const reason = e.response?.data?.message || e.message || '提交失败'
+      ElMessage.error(`已提交 0 个扫描任务，提交失败：${reason}`)
+    } else {
+      ElMessage.error(e.message || '提交失败')
+    }
   } finally {
     discoverSubmitting.value = false
   }
@@ -359,6 +426,7 @@ const clearAll = async () => {
 }
 
 const openDetail = async (row) => {
+  resetIpResultFilters()
   currentTask.value = row
   try {
     const res = await discoverApi.taskDetail(row.id)
