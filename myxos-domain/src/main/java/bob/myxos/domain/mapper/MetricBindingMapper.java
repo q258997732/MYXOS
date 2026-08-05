@@ -15,8 +15,9 @@ public interface MetricBindingMapper extends BaseMapper<MetricBinding> {
 
     @Select("SELECT * FROM metric_binding WHERE enabled = 1 AND deleted = 0 "
             + "AND (next_collect_at IS NULL OR next_collect_at <= #{now}) "
-            + "ORDER BY next_collect_at ASC, id ASC LIMIT #{limit}")
-    List<MetricBinding> selectDue(@Param("now") LocalDateTime now, @Param("limit") int limit);
+            + "ORDER BY CASE WHEN id > #{afterId} THEN 0 ELSE 1 END, next_collect_at ASC, id ASC LIMIT #{limit}")
+    List<MetricBinding> selectDue(@Param("now") LocalDateTime now, @Param("afterId") Long afterId,
+                                  @Param("limit") int limit);
 
     @Update("UPDATE metric_binding SET last_collected_at = #{completedAt}, next_collect_at = #{nextCollectAt} "
             + "WHERE id = #{id} AND deleted = 0")

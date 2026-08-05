@@ -17,6 +17,7 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,6 +54,22 @@ class MetricBindingSchedulerTest {
         scheduler.dispatch(Collections.singletonList(binding), statuses("HOST:1", "ONLINE"));
 
         verify(executor, never()).execute(any(Runnable.class));
+    }
+
+    @Test
+    void 队列拒绝后应释放单飞锁并为后续调度退避() {
+        MetricBindingScheduler scheduler = scheduler();
+        MetricBinding binding = hostBinding();
+        doAnswer(invocation -> {
+            ((MetricBindingScheduler.RejectedTask) invocation.getArgument(0)).rejected();
+            return null;
+        }).doNothing().when(executor).execute(any(Runnable.class));
+
+        scheduler.dispatch(Collections.singletonList(binding), statuses("HOST:1", "ONLINE"));
+        scheduler.dispatch(Collections.singletonList(binding), statuses("HOST:1", "ONLINE"));
+
+        verify(bindingMapper).markSkipped(any(Long.class), any(LocalDateTime.class), any(LocalDateTime.class));
+        verify(executor, org.mockito.Mockito.times(2)).execute(any(Runnable.class));
     }
 
     private MetricBindingScheduler scheduler() {

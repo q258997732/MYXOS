@@ -71,6 +71,14 @@ public class BoundMetricCollector {
         ShellResp response = client.shell(device.getIp(), binding.getAndroidName(), command.get());
         String output = response.getMsg();
         snapshot.setExtra("{\"shellCode\":" + shellCode(response) + "}");
+        if (response.getCode() == null || response.getCode() != 200) {
+            unknown(snapshot, "shell 响应失败");
+            return;
+        }
+        if (shellCode(response) != 0) {
+            unknown(snapshot, "shell 执行失败");
+            return;
+        }
         if (output == null) {
             unknown(snapshot, "shell 未返回输出");
             return;

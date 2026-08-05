@@ -36,6 +36,7 @@ public class MetricBindingScheduler {
     private final int batchSize;
     private final int backoffSec;
     private final ConcurrentHashMap<String, Boolean> inFlight = new ConcurrentHashMap<String, Boolean>();
+    private volatile long dispatchCursor;
 
     public MetricBindingScheduler(MetricBindingMapper bindingMapper, DeviceMapper deviceMapper,
                                   MetricSnapshotMapper snapshotMapper, BoundMetricCollector boundMetricCollector,
@@ -53,7 +54,10 @@ public class MetricBindingScheduler {
 
     @Scheduled(fixedDelay = 5000)
     public void schedule() {
-        List<MetricBinding> bindings = bindingMapper.selectDue(LocalDateTime.now(), batchSize);
+        List<MetricBinding> bindings = bindingMapper.selectDue(LocalDateTime.now(), dispatchCursor, batchSize);
+        if (!bindings.isEmpty()) {
+            dispatchCursor = bindings.get(bindings.size() - 1).getId();
+        }
         dispatch(bindings, resolveStatuses(bindings));
     }
 

@@ -1,6 +1,6 @@
 package bob.myxos.collector.config;
 
-import bob.myxos.collector.collector.MetricCollectJob;
+import bob.myxos.collector.collector.DeviceStatusRefreshJob;
 import bob.myxos.domain.entity.SysConfig;
 import bob.myxos.domain.mapper.SysConfigMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -32,12 +32,12 @@ public class MetricCollectScheduleConfig implements SchedulingConfigurer {
     /** 采集间隔下限（秒），防止配置过小压垮设备 */
     private static final long MIN_INTERVAL_SEC = 5L;
 
-    private final MetricCollectJob metricCollectJob;
+    private final DeviceStatusRefreshJob deviceStatusRefreshJob;
     private final SysConfigMapper sysConfigMapper;
 
     @Override
     public void configureTasks(ScheduledTaskRegistrar registrar) {
-        registrar.addTriggerTask(metricCollectJob::collect, triggerContext -> {
+        registrar.addTriggerTask(deviceStatusRefreshJob::refresh, triggerContext -> {
             Date lastCompletion = triggerContext.lastCompletionTime();
             // 首次调度（lastCompletion 为 null）立即执行，保持与原 fixedDelay 启动即跑一致
             long base = lastCompletion == null
