@@ -24,6 +24,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.LinkedHashSet;
@@ -299,9 +300,13 @@ public class ThresholdServiceImpl implements ThresholdService {
                 throw new BizException("枚举阈值包含未验证的选项");
             }
             try {
-                req.setThresholdText(objectMapper.writeValueAsString(values));
+                String thresholdText = objectMapper.writeValueAsString(values);
+                req.setThresholdText(thresholdText);
             } catch (Exception e) {
                 throw new BizException("枚举阈值序列化失败");
+            }
+            if (req.getThresholdText().getBytes(StandardCharsets.UTF_8).length > 65535) {
+                throw new BizException("枚举阈值序列化后超过存储容量");
             }
             req.setConditionType(ConditionType.ENUM.name());
             req.setThresholdValue(null);

@@ -6,6 +6,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Bean;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -19,9 +23,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 验证内部令牌过滤器的放行与拒绝逻辑
  */
 @WebMvcTest(InternalController.class)
-@ContextConfiguration(classes = {InternalTokenFilter.class, InternalController.class})
+@ContextConfiguration(classes = {InternalTokenFilter.class, InternalController.class, InternalControllerIntegrationTest.TestSecurityConfig.class})
 @TestPropertySource(properties = "myxos.internal.token=test-internal-token")
 class InternalControllerIntegrationTest {
+
+    @TestConfiguration
+    static class TestSecurityConfig {
+        @Bean
+        SecurityFilterChain testSecurityFilterChain(HttpSecurity http) throws Exception {
+            return http.csrf().disable().authorizeRequests().anyRequest().permitAll().and().build();
+        }
+    }
 
     @Autowired
     private MockMvc mockMvc;
