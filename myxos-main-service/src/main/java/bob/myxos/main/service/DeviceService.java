@@ -5,6 +5,8 @@ import bob.myxos.domain.entity.AlarmEvent;
 import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.MetricSnapshot;
 import bob.myxos.domain.entity.OpTask;
+import bob.myxos.domain.entity.MetricBinding;
+import bob.myxos.main.dto.MetricBindingReq;
 import bob.myxos.main.dto.AndroidInstanceVO;
 import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
@@ -187,4 +189,10 @@ public interface DeviceService {
      * @return 安卓实例名称列表
      */
     List<String> listAndroidNames(String scopeType, Long scopeId, String scopeIds);
+
+    List<MetricBinding> listMetricBindings(Long id, String androidName);
+
+    List<MetricBinding> saveMetricBindings(Long id, String androidName, MetricBindingReq req);
+
+    MetricBinding resolveEffectiveMetricBinding(Long id, String androidName, String metricCode);
 }

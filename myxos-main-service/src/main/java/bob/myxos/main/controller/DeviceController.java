@@ -13,6 +13,8 @@ import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceOpReq;
 import bob.myxos.main.dto.DeviceUpdateReq;
 import bob.myxos.main.dto.ShellReq;
+import bob.myxos.main.dto.MetricBindingReq;
+import bob.myxos.domain.entity.MetricBinding;
 import bob.myxos.main.service.DeviceService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -291,6 +293,31 @@ public class DeviceController {
     @GetMapping("/{id}/androids")
     public Result<List<AndroidInstanceVO>> androids(@PathVariable Long id) {
         return Result.ok(deviceService.listAndroidInstances(id));
+    }
+
+    @GetMapping("/{id}/metric-bindings")
+    public Result<List<MetricBinding>> metricBindings(@PathVariable Long id) {
+        return Result.ok(deviceService.listMetricBindings(id, ""));
+    }
+
+    @PutMapping("/{id}/metric-bindings")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<List<MetricBinding>> saveMetricBindings(@PathVariable Long id, @Valid @RequestBody MetricBindingReq req) {
+        return Result.ok(deviceService.saveMetricBindings(id, "", req));
+    }
+
+    @GetMapping("/{id}/androids/{name}/metric-bindings")
+    public Result<List<MetricBinding>> androidMetricBindings(@PathVariable Long id,
+            @PathVariable @Pattern(regexp = "^[A-Za-z0-9_.-]{1,128}$", message = "安卓实例名称格式不合法") String name) {
+        return Result.ok(deviceService.listMetricBindings(id, name));
+    }
+
+    @PutMapping("/{id}/androids/{name}/metric-bindings")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<List<MetricBinding>> saveAndroidMetricBindings(@PathVariable Long id,
+            @PathVariable @Pattern(regexp = "^[A-Za-z0-9_.-]{1,128}$", message = "安卓实例名称格式不合法") String name,
+            @Valid @RequestBody MetricBindingReq req) {
+        return Result.ok(deviceService.saveMetricBindings(id, name, req));
     }
 
     /**

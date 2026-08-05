@@ -9,6 +9,10 @@ import bob.myxos.domain.entity.AlarmEvent;
 import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.DeviceGroup;
 import bob.myxos.domain.entity.MetricSnapshot;
+import bob.myxos.domain.entity.MetricBinding;
+import bob.myxos.domain.entity.MetricCatalog;
+import bob.myxos.domain.entity.MetricTemplate;
+import bob.myxos.domain.entity.MetricTemplateItem;
 import bob.myxos.domain.entity.OpTask;
 import bob.myxos.domain.entity.ThresholdRule;
 import bob.myxos.domain.mapper.ActionLogMapper;
@@ -16,12 +20,17 @@ import bob.myxos.domain.mapper.AlarmEventMapper;
 import bob.myxos.domain.mapper.DeviceGroupMapper;
 import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.domain.mapper.MetricSnapshotMapper;
+import bob.myxos.domain.mapper.MetricBindingMapper;
+import bob.myxos.domain.mapper.MetricCatalogMapper;
+import bob.myxos.domain.mapper.MetricTemplateItemMapper;
+import bob.myxos.domain.mapper.MetricTemplateMapper;
 import bob.myxos.domain.mapper.OpTaskMapper;
 import bob.myxos.domain.mapper.ThresholdRuleMapper;
 import bob.myxos.main.dto.AndroidInstanceVO;
 import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceUpdateReq;
+import bob.myxos.main.dto.MetricBindingReq;
 import bob.myxos.main.service.DeviceService;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
@@ -37,10 +46,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Data;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -56,7 +65,6 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class DeviceServiceImpl implements DeviceService {
 
     private final DeviceMapper deviceMapper;
@@ -68,6 +76,40 @@ public class DeviceServiceImpl implements DeviceService {
     private final ThresholdRuleMapper thresholdRuleMapper;
     private final MytosClientFactory clientFactory;
     private final ObjectMapper objectMapper;
+    private final MetricBindingMapper metricBindingMapper;
+    private final MetricCatalogMapper metricCatalogMapper;
+    private final MetricTemplateMapper metricTemplateMapper;
+    private final MetricTemplateItemMapper metricTemplateItemMapper;
+
+    public DeviceServiceImpl(DeviceMapper deviceMapper, DeviceGroupMapper deviceGroupMapper, OpTaskMapper opTaskMapper,
+                             MetricSnapshotMapper metricSnapshotMapper, AlarmEventMapper alarmEventMapper,
+                             ActionLogMapper actionLogMapper, ThresholdRuleMapper thresholdRuleMapper,
+                             MytosClientFactory clientFactory, ObjectMapper objectMapper) {
+        this(deviceMapper, deviceGroupMapper, opTaskMapper, metricSnapshotMapper, alarmEventMapper,
+                actionLogMapper, thresholdRuleMapper, clientFactory, objectMapper, null, null, null, null);
+    }
+
+    @Autowired
+    public DeviceServiceImpl(DeviceMapper deviceMapper, DeviceGroupMapper deviceGroupMapper, OpTaskMapper opTaskMapper,
+                             MetricSnapshotMapper metricSnapshotMapper, AlarmEventMapper alarmEventMapper,
+                             ActionLogMapper actionLogMapper, ThresholdRuleMapper thresholdRuleMapper,
+                             MytosClientFactory clientFactory, ObjectMapper objectMapper,
+                             MetricBindingMapper metricBindingMapper, MetricCatalogMapper metricCatalogMapper,
+                             MetricTemplateMapper metricTemplateMapper, MetricTemplateItemMapper metricTemplateItemMapper) {
+        this.deviceMapper = deviceMapper;
+        this.deviceGroupMapper = deviceGroupMapper;
+        this.opTaskMapper = opTaskMapper;
+        this.metricSnapshotMapper = metricSnapshotMapper;
+        this.alarmEventMapper = alarmEventMapper;
+        this.actionLogMapper = actionLogMapper;
+        this.thresholdRuleMapper = thresholdRuleMapper;
+        this.clientFactory = clientFactory;
+        this.objectMapper = objectMapper;
+        this.metricBindingMapper = metricBindingMapper;
+        this.metricCatalogMapper = metricCatalogMapper;
+        this.metricTemplateMapper = metricTemplateMapper;
+        this.metricTemplateItemMapper = metricTemplateItemMapper;
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -685,5 +727,57 @@ public class DeviceServiceImpl implements DeviceService {
             return "";
         }
         return resp.getData();
+    }
+
+    @Override
+    public List<MetricBinding> listMetricBindings(Long id, String androidName) {
+        getDetail(id);
+        String name = androidName == null ? "" : androidName;
+        return metricBindingMapper.selectList(new LambdaQueryWrapper<MetricBinding>()
+                .eq(MetricBinding::getDeviceId, id).eq(MetricBinding::getAndroidName, name)
+                .eq(MetricBinding::getDeleted, 0).orderByAsc(MetricBinding::getMetricCode));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<MetricBinding> saveMetricBindings(Long id, String androidName, MetricBindingReq req) {
+        getDetail(id);
+        String name = androidName == null ? "" : androidName;
+        boolean android = !name.isEmpty();
+        if (android && !name.matches("^[A-Za-z0-9_.-]{1,128}$")) throw new BizException("安卓实例名称格式不合法");
+        List<MetricBindingReq.Item> directItems = req.getItems() == null ? Collections.<MetricBindingReq.Item>emptyList() : req.getItems();
+        for (MetricBindingReq.Item item : directItems) saveBinding(id, name, android ? "ANDROID_INSTANCE" : "HOST", item.getMetricCode(), item.getEnabled(), item.getIntervalSec());
+        if (req.getTemplateIds() != null) for (Long templateId : req.getTemplateIds()) applyTemplate(id, name, android ? "ANDROID_INSTANCE" : "HOST", templateId);
+        return listMetricBindings(id, name);
+    }
+
+    private void applyTemplate(Long deviceId, String androidName, String targetType, Long templateId) {
+        MetricTemplate template = metricTemplateMapper.selectById(templateId);
+        if (template == null || Integer.valueOf(1).equals(template.getDeleted()) || !targetType.equals(template.getTargetType())) throw new BizException("指标模板与目标类型不兼容: " + templateId);
+        List<MetricTemplateItem> items = metricTemplateItemMapper.selectList(new LambdaQueryWrapper<MetricTemplateItem>().eq(MetricTemplateItem::getTemplateId, templateId).eq(MetricTemplateItem::getDeleted, 0));
+        for (MetricTemplateItem item : items) {
+            MetricCatalog catalog = metricCatalogMapper.selectById(item.getMetricCatalogId());
+            if (catalog == null || !targetType.equals(catalog.getTargetType())) throw new BizException("模板包含不兼容指标");
+            saveBinding(deviceId, androidName, targetType, catalog.getCode(), item.getEnabled(), item.getDefaultIntervalSec());
+        }
+    }
+
+    private void saveBinding(Long deviceId, String androidName, String targetType, String metricCode, Integer enabled, Integer intervalSec) {
+        if (metricCode == null || metricCode.trim().isEmpty()) throw new BizException("指标编码不能为空");
+        if (intervalSec != null && (intervalSec < 15 || intervalSec > 86400)) throw new BizException("采集频率必须在15至86400秒之间");
+        MetricCatalog catalog = metricCatalogMapper.selectOne(new LambdaQueryWrapper<MetricCatalog>().eq(MetricCatalog::getCode, metricCode).eq(MetricCatalog::getTargetType, targetType).eq(MetricCatalog::getDeleted, 0));
+        if (catalog == null) throw new BizException("指标不存在或与目标类型不兼容: " + metricCode);
+        MetricBinding exists = metricBindingMapper.selectOne(new LambdaQueryWrapper<MetricBinding>().eq(MetricBinding::getDeviceId, deviceId).eq(MetricBinding::getAndroidName, androidName).eq(MetricBinding::getMetricCode, metricCode).eq(MetricBinding::getDeleted, 0));
+        if (exists != null) { exists.setEnabled(enabled == null ? exists.getEnabled() : enabled); exists.setIntervalSec(intervalSec == null ? exists.getIntervalSec() : intervalSec); metricBindingMapper.updateById(exists); return; }
+        MetricBinding binding = new MetricBinding(); binding.setDeviceId(deviceId); binding.setAndroidName(androidName); binding.setTargetType(targetType); binding.setMetricCode(metricCode); binding.setEnabled(enabled == null ? 1 : enabled); binding.setIntervalSec(intervalSec); metricBindingMapper.insert(binding);
+    }
+
+    @Override
+    public MetricBinding resolveEffectiveMetricBinding(Long id, String androidName, String metricCode) {
+        List<MetricBinding> all = metricBindingMapper.selectList(new LambdaQueryWrapper<MetricBinding>().eq(MetricBinding::getDeviceId, id).eq(MetricBinding::getMetricCode, metricCode).eq(MetricBinding::getDeleted, 0));
+        String name = androidName == null ? "" : androidName;
+        for (MetricBinding binding : all) if (name.equals(binding.getAndroidName())) return binding;
+        for (MetricBinding binding : all) if ("".equals(binding.getAndroidName())) return binding;
+        return null;
     }
 }
