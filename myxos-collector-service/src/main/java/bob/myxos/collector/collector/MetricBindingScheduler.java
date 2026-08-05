@@ -23,6 +23,9 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class MetricBindingScheduler {
 
+    /** 连续前向批次数达到该值后主动回绕，避免持续新增的高 ID 饿死低 ID。 */
+    private static final int MAX_FORWARD_BATCHES = 1;
+
     /** 供有界线程池拒绝策略回调的任务契约。 */
     public interface RejectedTask {
         void rejected();
@@ -37,6 +40,7 @@ public class MetricBindingScheduler {
     private final int backoffSec;
     private final ConcurrentHashMap<String, Boolean> inFlight = new ConcurrentHashMap<String, Boolean>();
     private volatile long dispatchCursor;
+    private int consecutiveForwardBatches;
 
     public MetricBindingScheduler(MetricBindingMapper bindingMapper, DeviceMapper deviceMapper,
                                   MetricSnapshotMapper snapshotMapper, BoundMetricCollector boundMetricCollector,
@@ -54,7 +58,20 @@ public class MetricBindingScheduler {
 
     @Scheduled(fixedDelay = 5000)
     public void schedule() {
-        List<MetricBinding> bindings = bindingMapper.selectDue(LocalDateTime.now(), dispatchCursor, batchSize);
+        LocalDateTime now = LocalDateTime.now();
+        List<MetricBinding> bindings;
+        if (consecutiveForwardBatches >= MAX_FORWARD_BATCHES) {
+            bindings = bindingMapper.selectDueFromStart(now, dispatchCursor, batchSize);
+            consecutiveForwardBatches = 0;
+        } else {
+            bindings = bindingMapper.selectDueAfter(now, dispatchCursor, batchSize);
+            if (bindings.isEmpty()) {
+                bindings = bindingMapper.selectDueFromStart(now, dispatchCursor, batchSize);
+                consecutiveForwardBatches = 0;
+            } else {
+                consecutiveForwardBatches++;
+            }
+        }
         if (!bindings.isEmpty()) {
             dispatchCursor = bindings.get(bindings.size() - 1).getId();
         }
@@ -86,15 +103,18 @@ public class MetricBindingScheduler {
     }
 
     private void execute(MetricBinding binding, String targetKey) {
-        LocalDateTime completedAt = LocalDateTime.now();
         try {
             Device device = deviceMapper.selectById(binding.getDeviceId());
-            if (device != null) {
-                MetricExecutionResult result = boundMetricCollector.collect(device, binding);
-                snapshotMapper.insert(result.getSnapshot());
+            if (device == null) {
+                throw new IllegalStateException("设备不存在");
             }
-        } finally {
+            MetricExecutionResult result = boundMetricCollector.collect(device, binding);
+            snapshotMapper.insert(result.getSnapshot());
+            LocalDateTime completedAt = LocalDateTime.now();
             bindingMapper.markCollected(binding.getId(), completedAt, nextTime(binding, completedAt));
+        } catch (Exception e) {
+            skip(binding, LocalDateTime.now(), backoffSec);
+        } finally {
             inFlight.remove(targetKey);
         }
     }
