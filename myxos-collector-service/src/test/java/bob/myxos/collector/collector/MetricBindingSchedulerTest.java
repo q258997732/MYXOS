@@ -79,6 +79,25 @@ class MetricBindingSchedulerTest {
     }
 
     @Test
+    void 拒绝退避更新异常时应只尝试一次并释放单飞锁() {
+        MetricBindingScheduler scheduler = scheduler();
+        MetricBinding binding = hostBinding();
+        doAnswer(invocation -> {
+            ((MetricBindingScheduler.RejectedTask) invocation.getArgument(0)).rejected();
+            return null;
+        }).doNothing().when(executor).execute(any(Runnable.class));
+        doThrow(new RuntimeException("数据库不可用")).when(bindingMapper)
+                .markSkipped(any(Long.class), any(LocalDateTime.class), any(LocalDateTime.class));
+
+        scheduler.dispatch(Collections.singletonList(binding), statuses("HOST:1", "ONLINE"));
+        scheduler.dispatch(Collections.singletonList(binding), statuses("HOST:1", "ONLINE"));
+
+        verify(bindingMapper, org.mockito.Mockito.times(1))
+                .markSkipped(any(Long.class), any(LocalDateTime.class), any(LocalDateTime.class));
+        verify(executor, org.mockito.Mockito.times(2)).execute(any(Runnable.class));
+    }
+
+    @Test
     void 长耗时采集应以实际完成时刻计算下次执行时间() throws Exception {
         MetricBindingScheduler scheduler = scheduler();
         MetricBinding binding = hostBinding();
@@ -125,27 +144,85 @@ class MetricBindingSchedulerTest {
     }
 
     @Test
-    void 游标到达高ID末尾时应回绕选择低ID绑定() {
+    void 复合游标回绕时应选择较早到期的低ID绑定() {
         MetricBindingScheduler scheduler = scheduler();
         MetricBinding highId = hostBinding();
         highId.setId(100L);
+        highId.setNextCollectAt(LocalDateTime.of(2026, 8, 5, 10, 0));
+        MetricBinding newerHighId = hostBinding();
+        newerHighId.setId(101L);
+        newerHighId.setDeviceId(3L);
+        newerHighId.setNextCollectAt(LocalDateTime.of(2026, 8, 5, 10, 1));
         MetricBinding lowId = hostBinding();
         lowId.setId(1L);
         lowId.setDeviceId(2L);
-        when(bindingMapper.selectDueAfter(any(LocalDateTime.class), org.mockito.ArgumentMatchers.eq(0L),
-                org.mockito.ArgumentMatchers.eq(100))).thenReturn(Collections.singletonList(highId));
-        when(bindingMapper.selectDueFromStart(any(LocalDateTime.class), org.mockito.ArgumentMatchers.eq(100L),
+        lowId.setNextCollectAt(LocalDateTime.of(2026, 8, 5, 9, 0));
+        when(bindingMapper.selectFirstDue(any(LocalDateTime.class), org.mockito.ArgumentMatchers.eq(100)))
+                .thenReturn(Collections.singletonList(highId));
+        when(bindingMapper.selectDueAfter(any(LocalDateTime.class),
+                org.mockito.ArgumentMatchers.eq(highId.getNextCollectAt()), org.mockito.ArgumentMatchers.eq(100L),
+                org.mockito.ArgumentMatchers.eq(100))).thenReturn(Collections.singletonList(newerHighId));
+        when(bindingMapper.selectDueAtOrBefore(any(LocalDateTime.class),
+                org.mockito.ArgumentMatchers.eq(newerHighId.getNextCollectAt()), org.mockito.ArgumentMatchers.eq(101L),
                 org.mockito.ArgumentMatchers.eq(100)))
                 .thenReturn(Collections.singletonList(lowId));
+        when(deviceMapper.selectById(1L)).thenReturn(onlineDevice());
+        when(deviceMapper.selectById(2L)).thenReturn(onlineDevice(2L));
+        when(deviceMapper.selectById(3L)).thenReturn(onlineDevice(3L));
+
+        scheduler.schedule();
+        scheduler.schedule();
+        scheduler.schedule();
+
+        verify(bindingMapper).selectDueAtOrBefore(any(LocalDateTime.class),
+                org.mockito.ArgumentMatchers.eq(newerHighId.getNextCollectAt()), org.mockito.ArgumentMatchers.eq(101L),
+                org.mockito.ArgumentMatchers.eq(100));
+        verify(executor, org.mockito.Mockito.times(3)).execute(any(Runnable.class));
+    }
+
+    @Test
+    void 复合游标前向查询应按到期时间而非ID推进() {
+        MetricBindingScheduler scheduler = scheduler();
+        MetricBinding first = hostBinding();
+        first.setId(100L);
+        first.setNextCollectAt(LocalDateTime.of(2026, 8, 5, 10, 0));
+        MetricBinding second = hostBinding();
+        second.setId(1L);
+        second.setDeviceId(2L);
+        second.setNextCollectAt(LocalDateTime.of(2026, 8, 5, 11, 0));
+        when(bindingMapper.selectFirstDue(any(LocalDateTime.class), org.mockito.ArgumentMatchers.eq(100)))
+                .thenReturn(Collections.singletonList(first));
+        when(bindingMapper.selectDueAfter(any(LocalDateTime.class),
+                org.mockito.ArgumentMatchers.eq(first.getNextCollectAt()), org.mockito.ArgumentMatchers.eq(100L),
+                org.mockito.ArgumentMatchers.eq(100))).thenReturn(Collections.singletonList(second));
         when(deviceMapper.selectById(1L)).thenReturn(onlineDevice());
         when(deviceMapper.selectById(2L)).thenReturn(onlineDevice(2L));
 
         scheduler.schedule();
         scheduler.schedule();
+        scheduler.schedule();
 
-        verify(bindingMapper).selectDueFromStart(any(LocalDateTime.class), org.mockito.ArgumentMatchers.eq(100L),
+        verify(bindingMapper).selectDueAfter(any(LocalDateTime.class),
+                org.mockito.ArgumentMatchers.eq(first.getNextCollectAt()), org.mockito.ArgumentMatchers.eq(100L),
                 org.mockito.ArgumentMatchers.eq(100));
-        verify(executor, org.mockito.Mockito.times(2)).execute(any(Runnable.class));
+    }
+
+    @Test
+    void 回绕遇到仍在途绑定时不得重复提交() {
+        MetricBindingScheduler scheduler = scheduler();
+        MetricBinding binding = hostBinding();
+        binding.setNextCollectAt(LocalDateTime.of(2026, 8, 5, 10, 0));
+        when(bindingMapper.selectFirstDue(any(LocalDateTime.class), org.mockito.ArgumentMatchers.eq(100)))
+                .thenReturn(Collections.singletonList(binding));
+        when(bindingMapper.selectDueAtOrBefore(any(LocalDateTime.class),
+                org.mockito.ArgumentMatchers.eq(binding.getNextCollectAt()), org.mockito.ArgumentMatchers.eq(10L),
+                org.mockito.ArgumentMatchers.eq(100))).thenReturn(Collections.singletonList(binding));
+        when(deviceMapper.selectById(1L)).thenReturn(onlineDevice());
+
+        scheduler.schedule();
+        scheduler.schedule();
+
+        verify(executor, org.mockito.Mockito.times(1)).execute(any(Runnable.class));
     }
 
     private MetricBindingScheduler scheduler() {

@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -21,10 +22,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** 按绑定到期时间分发受控指标采集任务。 */
 @Component
+@Slf4j
 public class MetricBindingScheduler {
 
     /** 连续前向批次数达到该值后主动回绕，避免持续新增的高 ID 饿死低 ID。 */
-    private static final int MAX_FORWARD_BATCHES = 1;
+    private static final int MAX_FORWARD_BATCHES = 2;
 
     /** 供有界线程池拒绝策略回调的任务契约。 */
     public interface RejectedTask {
@@ -39,7 +41,8 @@ public class MetricBindingScheduler {
     private final int batchSize;
     private final int backoffSec;
     private final ConcurrentHashMap<String, Boolean> inFlight = new ConcurrentHashMap<String, Boolean>();
-    private volatile long dispatchCursor;
+    private LocalDateTime dispatchCursorTime;
+    private long dispatchCursorId;
     private int consecutiveForwardBatches;
 
     public MetricBindingScheduler(MetricBindingMapper bindingMapper, DeviceMapper deviceMapper,
@@ -60,20 +63,25 @@ public class MetricBindingScheduler {
     public void schedule() {
         LocalDateTime now = LocalDateTime.now();
         List<MetricBinding> bindings;
-        if (consecutiveForwardBatches >= MAX_FORWARD_BATCHES) {
-            bindings = bindingMapper.selectDueFromStart(now, dispatchCursor, batchSize);
+        if (dispatchCursorTime == null) {
+            bindings = bindingMapper.selectFirstDue(now, batchSize);
+            consecutiveForwardBatches = bindings.isEmpty() ? 0 : 1;
+        } else if (consecutiveForwardBatches >= MAX_FORWARD_BATCHES) {
+            bindings = bindingMapper.selectDueAtOrBefore(now, dispatchCursorTime, dispatchCursorId, batchSize);
             consecutiveForwardBatches = 0;
         } else {
-            bindings = bindingMapper.selectDueAfter(now, dispatchCursor, batchSize);
+            bindings = bindingMapper.selectDueAfter(now, dispatchCursorTime, dispatchCursorId, batchSize);
             if (bindings.isEmpty()) {
-                bindings = bindingMapper.selectDueFromStart(now, dispatchCursor, batchSize);
+                bindings = bindingMapper.selectDueAtOrBefore(now, dispatchCursorTime, dispatchCursorId, batchSize);
                 consecutiveForwardBatches = 0;
             } else {
                 consecutiveForwardBatches++;
             }
         }
         if (!bindings.isEmpty()) {
-            dispatchCursor = bindings.get(bindings.size() - 1).getId();
+            MetricBinding last = bindings.get(bindings.size() - 1);
+            dispatchCursorTime = last.getNextCollectAt();
+            dispatchCursorId = last.getId();
         }
         dispatch(bindings, resolveStatuses(bindings));
     }
@@ -135,8 +143,13 @@ public class MetricBindingScheduler {
 
         @Override
         public void rejected() {
-            inFlight.remove(targetKey);
-            skip(binding, LocalDateTime.now(), backoffSec);
+            try {
+                skip(binding, LocalDateTime.now(), backoffSec);
+            } catch (Exception e) {
+                log.warn("采集任务被拒绝后的退避更新失败，绑定ID={}", binding.getId(), e);
+            } finally {
+                inFlight.remove(targetKey);
+            }
         }
     }
 
