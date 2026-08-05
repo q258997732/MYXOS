@@ -768,8 +768,24 @@ public class DeviceServiceImpl implements DeviceService {
         MetricCatalog catalog = metricCatalogMapper.selectOne(new LambdaQueryWrapper<MetricCatalog>().eq(MetricCatalog::getCode, metricCode).eq(MetricCatalog::getTargetType, targetType).eq(MetricCatalog::getDeleted, 0));
         if (catalog == null) throw new BizException("指标不存在或与目标类型不兼容: " + metricCode);
         MetricBinding exists = metricBindingMapper.selectOne(new LambdaQueryWrapper<MetricBinding>().eq(MetricBinding::getDeviceId, deviceId).eq(MetricBinding::getAndroidName, androidName).eq(MetricBinding::getMetricCode, metricCode).eq(MetricBinding::getDeleted, 0));
-        if (exists != null) { exists.setEnabled(enabled == null ? exists.getEnabled() : enabled); exists.setIntervalSec(intervalSec == null ? exists.getIntervalSec() : intervalSec); metricBindingMapper.updateById(exists); return; }
-        MetricBinding binding = new MetricBinding(); binding.setDeviceId(deviceId); binding.setAndroidName(androidName); binding.setTargetType(targetType); binding.setMetricCode(metricCode); binding.setEnabled(enabled == null ? 1 : enabled); binding.setIntervalSec(intervalSec); metricBindingMapper.insert(binding);
+        if (exists != null) {
+            int effectiveEnabled = enabled == null ? exists.getEnabled() : enabled;
+            exists.setEnabled(effectiveEnabled);
+            exists.setIntervalSec(intervalSec == null ? exists.getIntervalSec() : intervalSec);
+            if (effectiveEnabled == 1 && exists.getNextCollectAt() == null) {
+                exists.setNextCollectAt(LocalDateTime.now());
+            }
+            metricBindingMapper.updateById(exists);
+            return;
+        }
+        MetricBinding binding = new MetricBinding();
+        binding.setDeviceId(deviceId); binding.setAndroidName(androidName); binding.setTargetType(targetType);
+        binding.setMetricCode(metricCode); binding.setEnabled(enabled == null ? 1 : enabled);
+        binding.setIntervalSec(intervalSec);
+        if (Integer.valueOf(1).equals(binding.getEnabled())) {
+            binding.setNextCollectAt(LocalDateTime.now());
+        }
+        metricBindingMapper.insert(binding);
     }
 
     @Override
