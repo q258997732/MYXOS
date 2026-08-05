@@ -28,6 +28,9 @@ public class ThresholdRule {
     /** 指标类型 */
     private String metricType;
 
+    /** 指标编码 */
+    private String metricCode;
+
     /** 条件类型：NUMERIC（数值判断） / STRING（字符判断） / NONE（状态触发，无需条件） */
     private String conditionType;
 

@@ -9,5 +9,7 @@ public enum ConditionType {
     /** 字符判断（compareOp + thresholdText，支持 EQ/NE/CONTAINS） */
     STRING,
     /** 无需条件（状态类指标，检测到对应状态即触发） */
-    NONE
+    NONE,
+    /** 枚举值判断（compareOp + thresholdText，支持 IN / NOT_IN） */
+    ENUM
 }
