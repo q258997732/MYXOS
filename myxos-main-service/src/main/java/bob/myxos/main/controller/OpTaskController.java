@@ -7,6 +7,7 @@ import bob.myxos.main.service.OpTaskService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -70,6 +71,18 @@ public class OpTaskController {
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public Result<Void> retry(@PathVariable Long id) {
         opTaskService.retry(id);
+        return Result.ok();
+    }
+
+    /**
+     * 清空已结束的操作任务（逻辑删除 SUCCESS / FAILED 记录）
+     *
+     * @return 空结果
+     */
+    @DeleteMapping
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public Result<Void> clear() {
+        opTaskService.clear();
         return Result.ok();
     }
 }

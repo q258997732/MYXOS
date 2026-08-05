@@ -49,7 +49,7 @@
               <el-option label="包含" value="CONTAINS" />
             </el-select>
             <el-select v-if="form.metricType === 'ANDROID_STATUS'" v-model="form.thresholdText"
-              placeholder="目标状态" style="flex: 1; margin-left: 8px">
+              placeholder="目标状态" style="width: 240px; margin-left: 8px">
               <el-option v-for="s in androidStatusOptions" :key="s.value" :label="s.label" :value="s.value" />
             </el-select>
             <el-input v-else v-model="form.thresholdText" placeholder="目标文本，如 STOPPED" maxlength="255" style="flex: 1; margin-left: 8px" />
@@ -108,8 +108,14 @@
         </el-form-item>
 
         <el-form-item label="实例名称" v-if="form.metricType === 'ANDROID_STATUS'">
-          <el-input v-model="form.scopeAndroidName" placeholder="留空表示作用范围内的全部实例" maxlength="128" style="max-width: 320px" />
-          <span class="hint-text">填写后仅监控该名称的安卓实例</span>
+          <div class="android-name-field">
+            <el-select v-model="form.scopeAndroidNames" multiple filterable allow-create default-first-option
+              collapse-tags collapse-tags-tooltip :loading="androidNamesLoading"
+              placeholder="留空表示作用范围内的全部实例" style="width: 100%">
+              <el-option v-for="n in androidNameOptions" :key="n" :label="n" :value="n" />
+            </el-select>
+            <div class="hint-text hint-block">列出作用范围内主机采集到过的实例，也可手动输入；选择后仅监控这些实例</div>
+          </div>
         </el-form-item>
 
         <!-- 动作配置 -->
@@ -141,7 +147,8 @@
             </el-form-item>
 
             <el-form-item label="执行操作" v-if="action.actionType === 'OPERATION'">
-              <el-select v-model="action.operationCode" placeholder="请选择操作" style="width: 100%">
+              <el-select v-model="action.operationCode" placeholder="请选择操作" style="width: 100%"
+                @change="onOperationCodeChange(action)">
                 <el-option-group v-for="group in operationGroups" :key="group.label" :label="group.label">
                   <el-option v-for="op in group.options" :key="op.value" :label="op.label" :value="op.value" />
                 </el-option-group>
@@ -150,15 +157,19 @@
 
             <el-form-item v-if="action.actionType === 'OPERATION'">
               <template #label>
-                操作参数
                 <el-button type="primary" link :icon="QuestionFilled" @click="paramHelpVisible = true">参数示例</el-button>
               </template>
-              <el-input
-                v-model="action.operationParams"
-                type="textarea"
-                :rows="3"
-                :placeholder="paramPlaceholder(action.operationCode)"
-              />
+              <div class="android-name-field">
+                <el-input
+                  v-model="action.operationParams"
+                  type="textarea"
+                  :rows="3"
+                  :placeholder="paramPlaceholder(action.operationCode)"
+                />
+                <div class="hint-text hint-block" v-if="form.metricType === 'ANDROID_STATUS'">
+                  name 留空或填 ${name} 时，自动替换为触发告警的实例名（哪个实例状态异常就操作哪个实例）
+                </div>
+              </div>
             </el-form-item>
 
             <el-form-item label="执行顺序">
@@ -324,15 +335,42 @@ const form = reactive({
   scopeType: 'ALL',
   scopeId: null,
   scopeIds: [],
-  scopeAndroidName: '',
+  scopeAndroidNames: [],
   actions: []
 })
+
+/** 实例名称多选的数据源：作用范围内主机采集到过的安卓实例名 */
+const androidNameOptions = ref([])
+const androidNamesLoading = ref(false)
+
+/** 按当前作用范围加载安卓实例名称列表 */
+const loadAndroidNames = async () => {
+  if (form.metricType !== 'ANDROID_STATUS') return
+  if (form.scopeType === 'GROUP' && !form.scopeId) return
+  if (form.scopeType === 'DEVICE' && form.scopeIds.length === 0) return
+  androidNamesLoading.value = true
+  try {
+    const params = { scopeType: form.scopeType }
+    if (form.scopeType === 'GROUP') params.scopeId = form.scopeId
+    if (form.scopeType === 'DEVICE') params.scopeIds = form.scopeIds.join(',')
+    const res = await deviceApi.androidNames(params)
+    androidNameOptions.value = res.data || []
+  } catch (e) {
+    // 错误已在拦截器中提示，实例名仍可手动输入
+  } finally {
+    androidNamesLoading.value = false
+  }
+}
+
+// 作用范围变化时联动刷新实例名称候选
+watch([() => form.scopeType, () => form.scopeId, () => form.scopeIds.join(',')], loadAndroidNames)
 
 // 指标类型切换时联动条件类型与默认比较操作
 watch(() => form.metricType, (type) => {
   if (STRING_METRIC_TYPES.includes(type)) {
     form.conditionType = 'STRING'
     if (!['EQ', 'NE', 'CONTAINS'].includes(form.compareOp)) form.compareOp = 'EQ'
+    loadAndroidNames()
   } else if (STATE_METRIC_TYPES.includes(type)) {
     form.conditionType = 'NONE'
     if (form.compareOp === 'CONTAINS') form.compareOp = 'GTE'
@@ -341,6 +379,19 @@ watch(() => form.metricType, (type) => {
     if (form.compareOp === 'CONTAINS') form.compareOp = 'GT'
   }
 })
+
+/**
+ * 执行操作变更：容器/实例级操作在参数为空时默认填充 {"name":"${name}"} 占位符，
+ * 阈值自动触发时后端会将其替换为触发告警的实例名；主机级操作无需参数
+ */
+const onOperationCodeChange = (action) => {
+  const params = (action.operationParams || '').trim()
+  if (action.operationCode && action.operationCode !== 'REBOOT_HOST' && (params === '' || params === '{}')) {
+    action.operationParams = '{"name":"${name}"}'
+  } else if (action.operationCode === 'REBOOT_HOST' && params === '{"name":"${name}"}') {
+    action.operationParams = '{}'
+  }
+}
 
 const metricUnit = (type) => {
   switch (type) {
@@ -393,6 +444,12 @@ const parseScopeIds = (rule) => {
   return rule.scopeId ? [rule.scopeId] : []
 }
 
+/** 解析规则的多实例名：scopeAndroidName 逗号串拆为数组 */
+const parseScopeAndroidNames = (rule) => {
+  if (!rule.scopeAndroidName) return []
+  return rule.scopeAndroidName.split(',').map(s => s.trim()).filter(Boolean)
+}
+
 const loadDetail = async () => {
   loading.value = true
   try {
@@ -412,7 +469,7 @@ const loadDetail = async () => {
       scopeType: rule.scopeType || 'ALL',
       scopeId: rule.scopeId || null,
       scopeIds: parseScopeIds(rule),
-      scopeAndroidName: rule.scopeAndroidName || ''
+      scopeAndroidNames: parseScopeAndroidNames(rule)
     })
     form.actions.splice(0, form.actions.length)
     const actions = data.actions || []
@@ -481,8 +538,8 @@ const save = async () => {
       scopeId: form.scopeType === 'GROUP' ? form.scopeId
         : (form.scopeType === 'DEVICE' ? (form.scopeIds[0] || null) : null),
       scopeIds: form.scopeType === 'DEVICE' ? form.scopeIds : null,
-      scopeAndroidName: form.metricType === 'ANDROID_STATUS' && form.scopeAndroidName.trim()
-        ? form.scopeAndroidName.trim() : null,
+      scopeAndroidName: form.metricType === 'ANDROID_STATUS' && form.scopeAndroidNames.length > 0
+        ? form.scopeAndroidNames.join(',') : null,
       actions: form.actions
     }
     if (isEdit.value) {
@@ -539,6 +596,14 @@ onMounted(() => {
   margin-left: 8px;
   color: var(--text-muted);
   font-size: 13px;
+}
+.hint-block {
+  margin-left: 0;
+  margin-top: 4px;
+  line-height: 1.5;
+}
+.android-name-field {
+  width: 100%;
 }
 .action-card {
   margin-bottom: var(--spacing-md);

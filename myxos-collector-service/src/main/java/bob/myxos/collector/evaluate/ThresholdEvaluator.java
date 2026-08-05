@@ -143,7 +143,7 @@ public class ThresholdEvaluator {
      * 判断规则作用范围是否覆盖当前设备与快照
      * <p>
      * scopeType=DEVICE 时优先匹配 scopeIds（逗号分隔多设备），为空则回退匹配 scopeId；
-     * 规则配置了 scopeAndroidName 时，仅匹配该安卓实例的快照（ANDROID_STATUS 场景）
+     * 规则配置了 scopeAndroidName（逗号分隔多实例）时，仅匹配这些安卓实例的快照（ANDROID_STATUS 场景）
      *
      * @param rule        规则
      * @param device      设备
@@ -151,10 +151,10 @@ public class ThresholdEvaluator {
      * @return true 表示命中
      */
     boolean matchScope(ThresholdRule rule, Device device, String androidName) {
-        // 实例名过滤：规则指定了目标实例名时，仅匹配该实例的快照
+        // 实例名过滤：规则指定了目标实例名（逗号分隔可多选）时，仅匹配这些实例的快照
         String scopeAndroidName = rule.getScopeAndroidName();
         if (scopeAndroidName != null && !scopeAndroidName.trim().isEmpty()
-                && !scopeAndroidName.trim().equals(androidName)) {
+                && !matchAndroidName(scopeAndroidName, androidName)) {
             return false;
         }
         String scopeType = rule.getScopeType();
@@ -185,6 +185,25 @@ public class ThresholdEvaluator {
             // scopeId 为 null 时按 0 处理，避免 NPE
             long scopeId = rule.getScopeId() == null ? 0L : rule.getScopeId();
             return device.getGroupId() != null && device.getGroupId() == scopeId;
+        }
+        return false;
+    }
+
+    /**
+     * 判断快照实例名是否命中规则配置的实例名集合（逗号分隔，逐项精确匹配）
+     *
+     * @param scopeAndroidName 规则配置的实例名（单个或逗号分隔多个）
+     * @param androidName      快照对应的安卓实例名，可为 null
+     * @return true 表示命中
+     */
+    private boolean matchAndroidName(String scopeAndroidName, String androidName) {
+        if (androidName == null) {
+            return false;
+        }
+        for (String part : scopeAndroidName.split(",")) {
+            if (part.trim().equals(androidName)) {
+                return true;
+            }
         }
         return false;
     }
@@ -269,7 +288,12 @@ public class ThresholdEvaluator {
             if (durationSec <= 0) {
                 return true;
             }
-            LocalDateTime startTime = LocalDateTime.now().minusSeconds(durationSec);
+            // 时间窗以快照的采集时间为基准而非判定的挂钟时间：
+            // 采集一轮涉及多次设备 HTTP 调用，判定可能滞后采集数秒，
+            // 用 now() 做基准时短持续时长（如 5 秒）的时间窗会错过当前快照导致永不触发
+            LocalDateTime referenceTime = snapshot.getCollectedAt() != null
+                    ? snapshot.getCollectedAt() : LocalDateTime.now();
+            LocalDateTime startTime = referenceTime.minusSeconds(durationSec);
             List<MetricSnapshot> recent = selectHistory(device, rule, snapshot, startTime, null);
             if (recent == null || recent.isEmpty()) {
                 return false;
@@ -337,6 +361,8 @@ public class ThresholdEvaluator {
         LocalDateTime now = LocalDateTime.now();
         if (firing != null) {
             firing.setMetricValue(displayValue);
+            // 同步刷新阈值：规则阈值被修改后，持续 FIRING 的告警仍展示旧阈值会误导用户
+            firing.setThresholdValue(thresholdDisplay(rule));
             firing.setFiredAt(now);
             alarmEventMapper.updateById(firing);
             return;
@@ -348,9 +374,7 @@ public class ThresholdEvaluator {
         alarm.setAndroidName(androidName);
         alarm.setMetricType(rule.getMetricType());
         alarm.setMetricValue(displayValue);
-        alarm.setThresholdValue(rule.getThresholdValue() == null
-                ? rule.getThresholdText()
-                : rule.getThresholdValue().toPlainString());
+        alarm.setThresholdValue(thresholdDisplay(rule));
         alarm.setFiredAt(now);
         alarm.setStatus(ALARM_STATUS_FIRING);
         alarmEventMapper.insert(alarm);
@@ -372,6 +396,15 @@ public class ThresholdEvaluator {
                         action.getId(), rule.getId(), device.getId(), e);
             }
         }
+    }
+
+    /**
+     * 计算告警展示用阈值：数值规则取数值文本，字符规则（thresholdValue 为空）取目标文本
+     */
+    private String thresholdDisplay(ThresholdRule rule) {
+        return rule.getThresholdValue() == null
+                ? rule.getThresholdText()
+                : rule.getThresholdValue().toPlainString();
     }
 
     /**

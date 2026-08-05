@@ -29,6 +29,7 @@
         <el-form-item>
           <el-button type="primary" :icon="Search" @click="search">查询</el-button>
           <el-button :icon="Refresh" @click="reset">重置</el-button>
+          <el-button type="danger" :icon="Delete" @click="clearAll">清空</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -97,8 +98,8 @@
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Search, Refresh, RefreshRight } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Search, Refresh, RefreshRight, Delete } from '@element-plus/icons-vue'
 import { opTaskApi, authApi } from '@/api'
 import { useUserStore } from '@/store'
 import { formatDateTime } from '@/utils/date'
@@ -160,6 +161,18 @@ const reset = () => {
 const retry = async (id) => {
   await opTaskApi.retry(id)
   ElMessage.success('已重试')
+  load()
+}
+
+const clearAll = async () => {
+  await ElMessageBox.confirm('确认清空已完成（成功/失败）的任务记录？待执行与执行中的任务会保留。', '清空任务记录', {
+    type: 'warning',
+    confirmButtonText: '清空',
+    cancelButtonText: '取消'
+  })
+  await opTaskApi.clear()
+  ElMessage.success('任务记录已清空')
+  query.page = 1
   load()
 }
 

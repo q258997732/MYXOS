@@ -1,5 +1,6 @@
 package bob.myxos.main.service.impl;
 
+import bob.myxos.common.enums.OpTaskStatus;
 import bob.myxos.common.exception.BizException;
 import bob.myxos.domain.entity.OpTask;
 import bob.myxos.domain.mapper.OpTaskMapper;
@@ -61,5 +62,14 @@ public class OpTaskServiceImpl implements OpTaskService {
         update.setStartedAt(null);
         update.setFinishedAt(null);
         opTaskMapper.updateById(update);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void clear() {
+        // 仅清理终态任务，PENDING/RUNNING 保留，避免清空操作误取消未执行的操作；
+        // BaseMapper.delete 触发 @TableLogic 逻辑删除
+        opTaskMapper.delete(new LambdaQueryWrapper<OpTask>()
+                .in(OpTask::getStatus, OpTaskStatus.SUCCESS.name(), OpTaskStatus.FAILED.name()));
     }
 }

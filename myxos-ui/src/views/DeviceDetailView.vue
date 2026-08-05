@@ -237,7 +237,12 @@
           <div class="shell-tip">命令在容器内 shell 直接执行，无需 adb 前缀；常用示例：pm list packages（列出应用）、input keyevent 3（返回桌面）、settings list system（系统设置）</div>
         </el-form-item>
         <el-form-item v-if="dialogResult" label="执行结果">
-          <pre class="shell-result">{{ dialogResult }}</pre>
+          <div class="shell-result-wrapper">
+            <pre class="shell-result">{{ dialogResult }}</pre>
+            <div class="shell-result-footer">
+              <el-button size="small" :icon="CopyDocument" @click="copyDialogResult">复制</el-button>
+            </div>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -278,12 +283,13 @@
 import { reactive, ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Cellphone, Picture, MapLocation, InfoFilled } from '@element-plus/icons-vue'
+import { Cellphone, Picture, MapLocation, InfoFilled, CopyDocument } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { deviceApi, authApi } from '@/api'
 import { useUserStore } from '@/store'
 import DeviceStatusTag from '@/components/DeviceStatusTag.vue'
 import { formatDateTime } from '@/utils/date'
+import { metricLabel } from '@/utils/metric'
 
 const route = useRoute()
 const router = useRouter()
@@ -338,22 +344,6 @@ const TASK_POLL_MAX_COUNT = 10
 const TASK_POLL_INTERVAL_MS = 3000
 const ANDROID_POLL_MAX_COUNT = 10
 const ANDROID_POLL_INTERVAL_MS = 3000
-
-const METRIC_LABELS = {
-  CPU: 'CPU 使用率',
-  MEM: '内存使用率',
-  DISK: '磁盘使用率',
-  NET_RX: '网络接收',
-  NET_TX: '网络发送',
-  TEMP: '温度',
-  UPTIME: '运行时长',
-  VERSION: '版本号',
-  ANDROID_STATUS: '安卓实例状态',
-  ONLINE: '设备在线',
-  OFFLINE: '设备离线',
-  ANDROID_ONLINE: '安卓实例在线数',
-  ANDROID_OFFLINE: '安卓实例离线数'
-}
 
 let refreshTimer = null
 
@@ -413,13 +403,26 @@ async function loadTasks() {
   tasks.splice(0, tasks.length, ...res.data.records)
 }
 
-const hostMetrics = computed(() => latestMetrics.filter(m => m.metricType !== 'ANDROID_STATUS'))
-
-function metricLabel(type) {
-  return METRIC_LABELS[type] || type
-}
+const hostMetrics = computed(() => {
+  // 同类型快照在极端情况下（同秒多次采集）可能出现多条，按类型去重避免重复卡片；
+  // ANDROID_STATUS 在下方独立区块展示；OFFLINE 与 ONLINE 信息重复，仅保留「设备在线」
+  const HIDDEN_TYPES = ['ANDROID_STATUS', 'OFFLINE']
+  const seen = new Set()
+  return latestMetrics.filter(m => {
+    if (HIDDEN_TYPES.includes(m.metricType) || seen.has(m.metricType)) return false
+    seen.add(m.metricType)
+    return true
+  })
+})
 
 function formatMetricValue(item) {
+  // 主机在线/离线为状态类指标，1/0 转换为中文文本展示
+  if (item.metricType === 'ONLINE') {
+    return item.metricValue === '1' ? '在线' : '离线'
+  }
+  if (item.metricType === 'OFFLINE') {
+    return item.metricValue === '1' ? '离线' : '在线'
+  }
   return item.metricValue || '-'
 }
 
@@ -611,6 +614,43 @@ function openDialog(type) {
     dialogTitle.value = '执行 Adb 命令'
   }
   dialogVisible.value = true
+}
+
+async function copyDialogResult() {
+  const ok = await copyText(dialogResult.value)
+  if (ok) {
+    ElMessage.success('已复制到剪贴板')
+  } else {
+    ElMessage.error('复制失败，请手动选择文本复制')
+  }
+}
+
+/**
+ * 复制文本到剪贴板：优先 navigator.clipboard，非安全上下文回退 execCommand
+ */
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch (e) {
+      // 剪贴板 API 被拒绝时继续走回退方案
+    }
+  }
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.select()
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } catch (e) {
+    ok = false
+  }
+  document.body.removeChild(ta)
+  return ok
 }
 
 async function confirmDialog() {
@@ -842,6 +882,19 @@ onUnmounted(() => {
   word-break: break-all;
   font-family: 'Courier New', monospace;
   font-size: 13px;
+}
+.shell-result-wrapper {
+  width: 100%;
+}
+.shell-result-wrapper .shell-result {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+}
+.shell-result-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
 }
 .shell-tip {
   margin-top: 4px;

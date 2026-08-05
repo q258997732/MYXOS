@@ -80,12 +80,11 @@ public class ThresholdServiceImpl implements ThresholdService {
                 .set(ThresholdRule::getScopeIds, joinScopeIds(req.getScopeIds()))
                 .set(ThresholdRule::getScopeAndroidName, normalizeScopeAndroidName(req)));
 
-        // 逻辑删除旧动作（批量更新）
-        ThresholdAction deleted = new ThresholdAction();
-        deleted.setDeleted(1);
-        actionMapper.update(deleted, new LambdaQueryWrapper<ThresholdAction>()
-                .eq(ThresholdAction::getRuleId, id)
-                .eq(ThresholdAction::getDeleted, 0));
+        // 逻辑删除旧动作：必须走 BaseMapper.delete，@TableLogic 才会生效生成
+        // UPDATE ... SET deleted=1；此前用 update(entity) 设置 deleted=1，
+        // MyBatis-Plus 会在 SET 子句中忽略逻辑删除字段，导致旧动作从未被删除而不断累积
+        actionMapper.delete(new LambdaQueryWrapper<ThresholdAction>()
+                .eq(ThresholdAction::getRuleId, id));
 
         // 插入新动作
         saveActions(id, req.getActions());
@@ -160,12 +159,9 @@ public class ThresholdServiceImpl implements ThresholdService {
         requireRule(id);
         // 逻辑删除规则
         ruleMapper.deleteById(id);
-        // 逻辑删除关联动作（批量更新）
-        ThresholdAction deleted = new ThresholdAction();
-        deleted.setDeleted(1);
-        actionMapper.update(deleted, new LambdaQueryWrapper<ThresholdAction>()
-                .eq(ThresholdAction::getRuleId, id)
-                .eq(ThresholdAction::getDeleted, 0));
+        // 逻辑删除关联动作（BaseMapper.delete 触发 @TableLogic 逻辑删除）
+        actionMapper.delete(new LambdaQueryWrapper<ThresholdAction>()
+                .eq(ThresholdAction::getRuleId, id));
     }
 
     /**

@@ -296,6 +296,21 @@ class ThresholdEvaluatorTest {
     }
 
     @Test
+    @DisplayName("实例名配置为逗号分隔多值时匹配任一实例")
+    void matchScopeAndroidNameMultiple() {
+        // Arrange
+        ThresholdRule rule = rule("ANDROID_STATUS", CompareOp.NE.name(), null, "DURATION", 0, 0, ScopeType.DEVICE.name(), 1L);
+        rule.setScopeAndroidName("c1, c2 ,c3");
+
+        // Act & Assert：任一配置实例命中，其余实例与 null 不命中
+        assertTrue(evaluator.matchScope(rule, device(1L, 1L), "c1"));
+        assertTrue(evaluator.matchScope(rule, device(1L, 1L), "c2"));
+        assertTrue(evaluator.matchScope(rule, device(1L, 1L), "c3"));
+        assertFalse(evaluator.matchScope(rule, device(1L, 1L), "c4"));
+        assertFalse(evaluator.matchScope(rule, device(1L, 1L), null));
+    }
+
+    @Test
     @DisplayName("告警已处于 FIRING 时不重复执行动作，仅刷新告警")
     void actionsNotRepeatedWhileFiring() {
         // Arrange：CPU 超标且已存在 FIRING 告警

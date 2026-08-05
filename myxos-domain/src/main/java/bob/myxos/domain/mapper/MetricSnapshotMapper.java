@@ -82,6 +82,22 @@ public interface MetricSnapshotMapper extends BaseMapper<MetricSnapshot> {
                                                           @Param("startTime") LocalDateTime startTime);
 
     /**
+     * 查询指定设备集合出现过的安卓实例 extra 去重列表
+     * <p>
+     * extra 形如 {"name":"容器名"}，用于阈值规则"实例名称"多选下拉的数据源
+     *
+     * @param deviceIds 设备 ID 集合
+     * @return 去重后的 extra 列表
+     */
+    @Select({"<script>",
+            "SELECT DISTINCT extra FROM metric_snapshot",
+            "WHERE metric_type = 'ANDROID_STATUS' AND deleted = 0 AND extra IS NOT NULL",
+            "AND device_id IN",
+            "<foreach collection='deviceIds' item='id' open='(' separator=',' close=')'>#{id}</foreach>",
+            "</script>"})
+    List<String> selectDistinctAndroidExtras(@Param("deviceIds") List<Long> deviceIds);
+
+    /**
      * 查询某设备每种指标类型的最新一条记录
      *
      * @param deviceId 设备 ID

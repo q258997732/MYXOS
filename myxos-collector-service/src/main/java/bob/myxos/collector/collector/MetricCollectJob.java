@@ -9,7 +9,6 @@ import bob.myxos.collector.service.MetricPersistService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
@@ -42,9 +41,11 @@ public class MetricCollectJob {
 
     /**
      * 定时采集入口
-     * 间隔由 myxos.collector.interval-ms 配置控制，默认 30 秒
+     * <p>
+     * 由 {@code MetricCollectScheduleConfig} 以动态 Trigger 调度：
+     * 每轮执行完成后按 sys_config 的 collect.interval.sec（秒）计算下一轮执行时间，
+     * 页面上修改采集间隔后下一轮调度即生效，无需重启服务
      */
-    @Scheduled(fixedDelayString = "${myxos.collector.interval-ms:30000}")
     public void collect() {
         List<Device> devices = deviceMapper.selectList(
                 new LambdaQueryWrapper<Device>()

@@ -52,6 +52,14 @@ public class AlarmEvent {
     @TableField(exist = false)
     private String ruleName;
 
+    /** 设备名称（非持久化，查询时填充，无名称时回退为 IP） */
+    @TableField(exist = false)
+    private String deviceName;
+
+    /** 告警级别（非持久化，取该告警首条 LOG 动作的日志级别，无 LOG 动作时为空） */
+    @TableField(exist = false)
+    private String level;
+
     /** 创建人 */
     @TableField(fill = FieldFill.INSERT)
     private String whoCreated;

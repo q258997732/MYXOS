@@ -6,6 +6,8 @@ import bob.myxos.domain.entity.AlarmEvent;
 import bob.myxos.main.service.AlarmService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -57,6 +59,18 @@ public class AlarmController {
     @PostMapping("/{id}/resolve")
     public Result<Void> resolve(@PathVariable Long id) {
         alarmService.resolve(id);
+        return Result.ok();
+    }
+
+    /**
+     * 清空所有告警事件（逻辑删除）
+     *
+     * @return 空响应
+     */
+    @DeleteMapping
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public Result<Void> clear() {
+        alarmService.clear();
         return Result.ok();
     }
 }

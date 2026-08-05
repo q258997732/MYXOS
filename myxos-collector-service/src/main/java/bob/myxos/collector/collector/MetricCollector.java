@@ -8,6 +8,7 @@ import bob.myxos.domain.entity.MetricSnapshot;
 import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
+import bob.myxos.mytos.dto.AndroidDetailResp;
 import bob.myxos.mytos.dto.AndroidListResp;
 import bob.myxos.mytos.dto.BootStatusResp;
 import bob.myxos.mytos.dto.HealthResp;
@@ -205,7 +206,16 @@ public class MetricCollector implements Runnable {
         return null;
     }
 
+    /**
+     * 获取安卓实例状态：优先使用实例详情接口的 status 字段，解析为 UNKNOWN 时
+     * 回退到启动状态接口，与主服务 DeviceServiceImpl 的判断逻辑保持一致，
+     * 避免实例列表与在线/离线计数对同一实例得出不同状态
+     */
     private String fetchAndroidStatus(MytosClient client, String ip, String name) {
+        String detailStatus = fetchStatusFromDetail(client, ip, name);
+        if (!AndroidStatusParser.UNKNOWN.equals(detailStatus)) {
+            return detailStatus;
+        }
         try {
             BootStatusResp resp = client.getAndroidBootStatus(ip, name);
             if (resp == null || resp.getData() == null) {
@@ -215,6 +225,26 @@ public class MetricCollector implements Runnable {
             return AndroidStatusParser.parse(raw);
         } catch (Exception e) {
             log.debug("获取安卓实例状态失败：{}/{}", ip, name, e);
+            return AndroidStatusParser.UNKNOWN;
+        }
+    }
+
+    /**
+     * 从实例详情接口解析状态字段，失败或无法识别时返回 UNKNOWN
+     */
+    private String fetchStatusFromDetail(MytosClient client, String ip, String name) {
+        try {
+            AndroidDetailResp resp = client.getAndroidDetail(ip, name);
+            if (resp == null || resp.getCode() == null || resp.getCode() != 200 || resp.getData() == null) {
+                return AndroidStatusParser.UNKNOWN;
+            }
+            JsonNode statusNode = resp.getData().get("status");
+            if (statusNode == null || statusNode.isNull()) {
+                return AndroidStatusParser.UNKNOWN;
+            }
+            return AndroidStatusParser.parse(statusNode.asText());
+        } catch (Exception e) {
+            log.debug("获取安卓实例详情失败：{}/{}", ip, name, e);
             return AndroidStatusParser.UNKNOWN;
         }
     }

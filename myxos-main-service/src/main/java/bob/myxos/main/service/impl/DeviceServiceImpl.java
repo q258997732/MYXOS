@@ -1,6 +1,7 @@
 package bob.myxos.main.service.impl;
 
 import bob.myxos.common.enums.DeviceStatus;
+import bob.myxos.common.enums.ScopeType;
 import bob.myxos.common.exception.BizException;
 import bob.myxos.common.util.AndroidStatusParser;
 import bob.myxos.domain.entity.ActionLog;
@@ -546,6 +547,85 @@ public class DeviceServiceImpl implements DeviceService {
         wrapper.eq(MetricSnapshot::getDeleted, 0);
         wrapper.orderByDesc(MetricSnapshot::getCollectedAt);
         return metricSnapshotMapper.selectPage(new Page<>(page, size), wrapper);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> listAndroidNames(String scopeType, Long scopeId, String scopeIds) {
+        List<Long> deviceIds = resolveScopeDeviceIds(scopeType, scopeId, scopeIds);
+        if (deviceIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> extras = metricSnapshotMapper.selectDistinctAndroidExtras(deviceIds);
+        if (extras == null || extras.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return extras.stream()
+                .map(this::parseAndroidNameFromExtra)
+                .filter(name -> name != null && !name.isEmpty())
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按作用范围解析目标设备 ID 集合：ALL 全部设备，GROUP 按分组，DEVICE 按多选 ID
+     */
+    private List<Long> resolveScopeDeviceIds(String scopeType, Long scopeId, String scopeIds) {
+        LambdaQueryWrapper<Device> wrapper = new LambdaQueryWrapper<>();
+        wrapper.select(Device::getId).eq(Device::getDeleted, 0);
+        if (ScopeType.GROUP.name().equals(scopeType)) {
+            if (scopeId == null) {
+                return Collections.emptyList();
+            }
+            wrapper.eq(Device::getGroupId, scopeId);
+        } else if (ScopeType.DEVICE.name().equals(scopeType)) {
+            List<Long> ids = parseDeviceIds(scopeIds, scopeId);
+            if (ids.isEmpty()) {
+                return Collections.emptyList();
+            }
+            wrapper.in(Device::getId, ids);
+        }
+        return deviceMapper.selectList(wrapper).stream()
+                .map(Device::getId)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 解析多设备 ID：优先 scopeIds 逗号串，回退单个 scopeId
+     */
+    private List<Long> parseDeviceIds(String scopeIds, Long scopeId) {
+        List<Long> ids = new ArrayList<>();
+        if (scopeIds != null && !scopeIds.trim().isEmpty()) {
+            for (String part : scopeIds.split(",")) {
+                try {
+                    ids.add(Long.parseLong(part.trim()));
+                } catch (NumberFormatException ignored) {
+                    // 忽略非法片段，继续解析其余 ID
+                }
+            }
+        }
+        if (ids.isEmpty() && scopeId != null) {
+            ids.add(scopeId);
+        }
+        return ids;
+    }
+
+    /**
+     * 从快照 extra（形如 {"name":"容器名"}）中解析安卓实例名
+     */
+    private String parseAndroidNameFromExtra(String extra) {
+        if (extra == null || extra.isEmpty()) {
+            return null;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(extra);
+            JsonNode nameNode = node.get("name");
+            return nameNode != null && !nameNode.isNull() ? nameNode.asText() : null;
+        } catch (Exception e) {
+            log.debug("解析快照 extra 失败：{}", extra);
+            return null;
+        }
     }
 
     /**

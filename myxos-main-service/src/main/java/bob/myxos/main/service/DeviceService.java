@@ -175,4 +175,16 @@ public interface DeviceService {
      * @return 剪贴板文本内容
      */
     String getClipboard(Long id, String name);
+
+    /**
+     * 查询指定作用范围内采集到过的安卓实例名称（去重排序）
+     * <p>
+     * 用于阈值规则"实例名称"多选下拉的数据源
+     *
+     * @param scopeType 作用范围：ALL/GROUP/DEVICE
+     * @param scopeId   分组 ID 或单设备 ID（可选）
+     * @param scopeIds  多设备 ID 逗号串（可选，DEVICE 场景优先）
+     * @return 安卓实例名称列表
+     */
+    List<String> listAndroidNames(String scopeType, Long scopeId, String scopeIds);
 }

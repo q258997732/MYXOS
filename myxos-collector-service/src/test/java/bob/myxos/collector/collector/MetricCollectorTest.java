@@ -7,6 +7,7 @@ import bob.myxos.domain.entity.MetricSnapshot;
 import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
+import bob.myxos.mytos.dto.AndroidDetailResp;
 import bob.myxos.mytos.dto.AndroidListResp;
 import bob.myxos.mytos.dto.BootStatusResp;
 import bob.myxos.mytos.dto.HealthResp;
@@ -172,6 +173,41 @@ class MetricCollectorTest {
 
         Map<String, MetricSnapshot> byType = captureSnapshotsByType();
         assertEquals(BigDecimal.ONE, byType.get(MetricType.OFFLINE.name()).getMetricNum());
+    }
+
+    @Test
+    @DisplayName("实例详情接口返回有效状态时应优先于启动状态接口")
+    void runWhenDetailStatusAvailable() throws Exception {
+        // Arrange
+        HealthResp health = new HealthResp();
+        health.setCode(200);
+        HostVerResp version = new HostVerResp();
+        version.setData("1.2.3");
+        AndroidListResp listResp = new AndroidListResp();
+        listResp.setData(new ObjectMapper().readTree("[\"c1\",\"c2\"]"));
+
+        when(clientFactory.create(anyString(), anyInt())).thenReturn(client);
+        when(client.healthcheck(anyString())).thenReturn(health);
+        when(client.getHostVer(anyString())).thenReturn(version);
+        when(client.listAndroid(anyString())).thenReturn(listResp);
+        // 详情接口：c1 运行中，c2 已停止；启动状态接口未 stub（返回 null），验证详情优先且无需回退
+        when(client.getAndroidDetail(anyString(), anyString())).thenAnswer(inv -> {
+            AndroidDetailResp resp = new AndroidDetailResp();
+            resp.setCode(200);
+            String status = "c1".equals(inv.getArgument(1)) ? "running" : "stopped";
+            resp.setData(new ObjectMapper().readTree("{\"status\":\"" + status + "\"}"));
+            return resp;
+        });
+
+        MetricCollector collector = new MetricCollector(device, clientFactory, persistCallback, deviceMapper);
+
+        // Act
+        collector.run();
+
+        // Assert
+        Map<String, MetricSnapshot> byType = captureSnapshotsByType();
+        assertEquals(BigDecimal.ONE, byType.get(MetricType.ANDROID_ONLINE.name()).getMetricNum());
+        assertEquals(BigDecimal.ONE, byType.get(MetricType.ANDROID_OFFLINE.name()).getMetricNum());
     }
 
     /**

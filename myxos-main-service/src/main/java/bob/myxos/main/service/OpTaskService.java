@@ -33,4 +33,9 @@ public interface OpTaskService {
      * @param id 任务 ID
      */
     void retry(Long id);
+
+    /**
+     * 清空已结束的操作任务（逻辑删除 SUCCESS / FAILED 记录，待执行与执行中的任务保留）
+     */
+    void clear();
 }

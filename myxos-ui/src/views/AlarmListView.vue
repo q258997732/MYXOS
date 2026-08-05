@@ -18,6 +18,7 @@
         <el-form-item>
           <el-button type="primary" @click="search">查询</el-button>
           <el-button @click="reset">重置</el-button>
+          <el-button type="danger" @click="clearAll">清空</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -28,7 +29,9 @@
         <el-table-column prop="ruleName" label="规则" />
         <el-table-column prop="metricValue" label="指标值" />
         <el-table-column prop="thresholdValue" label="阈值" />
-        <el-table-column prop="firedAt" label="触发时间" width="170" />
+        <el-table-column prop="firedAt" label="触发时间" width="170">
+          <template #default="scope">{{ formatDateTime(scope.row.firedAt) }}</template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="scope">
             <el-tag :type="scope.row.status === 'FIRING' ? 'danger' : 'success'" size="small">{{ scope.row.status }}</el-tag>
@@ -57,8 +60,9 @@
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { alarmApi, deviceApi } from '@/api'
+import { formatDateTime } from '@/utils/date'
 
 const alarms = reactive([])
 const devices = reactive([])
@@ -97,6 +101,18 @@ function reset() {
 async function resolve(id) {
   await alarmApi.resolve(id)
   ElMessage.success('告警已恢复')
+  load()
+}
+
+async function clearAll() {
+  await ElMessageBox.confirm('确认清空所有告警记录？该操作不可恢复。', '清空告警', {
+    type: 'warning',
+    confirmButtonText: '清空',
+    cancelButtonText: '取消'
+  })
+  await alarmApi.clear()
+  ElMessage.success('告警已清空')
+  query.page = 1
   load()
 }
 

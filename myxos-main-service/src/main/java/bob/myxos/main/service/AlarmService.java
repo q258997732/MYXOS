@@ -25,4 +25,9 @@ public interface AlarmService {
      * @param id 告警 ID
      */
     void resolve(Long id);
+
+    /**
+     * 清空所有告警事件（逻辑删除）
+     */
+    void clear();
 }

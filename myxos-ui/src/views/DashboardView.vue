@@ -79,16 +79,23 @@
             </div>
           </template>
           <el-table :data="recentAlarms" size="small" stripe>
-            <el-table-column prop="deviceName" label="设备" show-overflow-tooltip />
-            <el-table-column prop="metricName" label="指标" width="120" />
-            <el-table-column prop="level" label="级别" width="80">
+            <el-table-column prop="deviceName" label="设备" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.deviceName || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="指标" width="120">
+              <template #default="{ row }">{{ metricLabel(row.metricType) }}</template>
+            </el-table-column>
+            <el-table-column label="级别" width="80">
               <template #default="{ row }">
-                <el-tag :type="row.level === 'CRITICAL' ? 'danger' : row.level === 'WARNING' ? 'warning' : 'info'" size="small">
+                <el-tag v-if="row.level" :type="alarmLevelType(row.level)" size="small">
                   {{ row.level }}
                 </el-tag>
+                <span v-else>-</span>
               </template>
             </el-table-column>
-            <el-table-column prop="createdAt" label="时间" width="160" />
+            <el-table-column label="时间" width="160">
+              <template #default="{ row }">{{ formatDateTime(row.firedAt) }}</template>
+            </el-table-column>
           </el-table>
         </el-card>
       </el-col>
@@ -121,6 +128,8 @@ import { reactive, ref, onMounted, onUnmounted } from 'vue'
 import * as echarts from 'echarts'
 import { Monitor, CircleCheck, CircleClose, Warning } from '@element-plus/icons-vue'
 import { deviceApi, alarmApi, opTaskApi } from '@/api'
+import { metricLabel } from '@/utils/metric'
+import { formatDateTime } from '@/utils/date'
 
 const stats = reactive({ total: 0, online: 0, offline: 0, alarms: 0 })
 const recentAlarms = reactive([])
@@ -139,6 +148,14 @@ const taskStatusType = (status) => {
   }
 }
 
+const alarmLevelType = (level) => {
+  switch (level) {
+    case 'ERROR': return 'danger'
+    case 'WARN': return 'warning'
+    default: return 'info'
+  }
+}
+
 const loadStats = async () => {
   const res = await deviceApi.list({ page: 1, size: 9999 })
   const records = res.data.records || []
@@ -151,7 +168,7 @@ const loadAlarms = async () => {
   const res = await alarmApi.list({ page: 1, size: 5 })
   recentAlarms.splice(0, recentAlarms.length, ...(res.data.records || []))
   const today = new Date().toISOString().slice(0, 10)
-  stats.alarms = (res.data.records || []).filter(a => a.createdAt && a.createdAt.startsWith(today)).length
+  stats.alarms = (res.data.records || []).filter(a => a.firedAt && a.firedAt.startsWith(today)).length
 }
 
 const loadTasks = async () => {

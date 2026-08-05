@@ -22,6 +22,7 @@ export const deviceApi = {
     { timeout: 65000 }),
   clipboardGet: (id, params) => request.get(`/devices/${id}/clipboard`, { params }),
   androids: (id) => request.get(`/devices/${id}/androids`),
+  androidNames: (params) => request.get('/devices/android-names', { params }),
   latestMetrics: (id) => request.get(`/devices/${id}/metrics/latest`),
   metricHistory: (id, params) => request.get(`/devices/${id}/metrics/history`, { params }),
   metrics: (id, params) => request.get(`/devices/${id}/metrics`, { params }),
@@ -45,7 +46,8 @@ export const thresholdApi = {
 
 export const alarmApi = {
   list: (params) => request.get('/alarms', { params }),
-  resolve: (id) => request.post(`/alarms/${id}/resolve`)
+  resolve: (id) => request.post(`/alarms/${id}/resolve`),
+  clear: () => request.delete('/alarms')
 }
 
 export const logApi = {
@@ -55,7 +57,8 @@ export const logApi = {
 export const opTaskApi = {
   list: (params) => request.get('/op-tasks', { params }),
   detail: (id) => request.get(`/op-tasks/${id}`),
-  retry: (id) => request.post(`/op-tasks/${id}/retry`)
+  retry: (id) => request.post(`/op-tasks/${id}/retry`),
+  clear: () => request.delete('/op-tasks')
 }
 
 export const discoverApi = {
