@@ -74,8 +74,6 @@ public class MetricCollector implements Runnable {
             if (health.getCode() != null && health.getCode() == 200) {
                 status = DeviceStatus.ONLINE;
                 version = fetchHostVersion(client, device.getIp());
-                snapshots.add(buildVersionSnapshot(version, collectedAt));
-                snapshots.addAll(collectSystemMetrics(client, device.getIp(), collectedAt));
                 List<MetricSnapshot> androidSnapshots = collectAndroidStatuses(client, device.getIp(), collectedAt);
                 runningCount = countByStatus(androidSnapshots, true);
                 notRunningCount = androidSnapshots.size() - runningCount;
@@ -263,6 +261,9 @@ public class MetricCollector implements Runnable {
         MetricSnapshot snapshot = new MetricSnapshot();
         snapshot.setDeviceId(device.getId());
         snapshot.setMetricType(MetricType.ANDROID_STATUS.name());
+        snapshot.setMetricCode(MetricType.ANDROID_STATUS.name());
+        snapshot.setTargetType("ANDROID_INSTANCE");
+        snapshot.setAndroidName(name);
         snapshot.setMetricValue(status);
         snapshot.setCollectedAt(collectedAt);
         snapshot.setExtra(String.format("{\"name\":\"%s\"}", name.replace("\\", "\\\\").replace("\"", "\\\"")));

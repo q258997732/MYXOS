@@ -24,6 +24,8 @@ myxos:
     metric-pool-core: 8
     metric-pool-max: 32
     metric-pool-queue: 500
+    metric-dispatch-batch-size: 100
+    metric-dispatch-backoff-sec: 5
     # 操作任务执行线程池配置
     op-pool-core: 4
     op-pool-max: 16

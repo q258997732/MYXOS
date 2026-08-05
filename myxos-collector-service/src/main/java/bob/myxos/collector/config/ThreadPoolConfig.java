@@ -1,6 +1,7 @@
 package bob.myxos.collector.config;
 
 import lombok.RequiredArgsConstructor;
+import bob.myxos.collector.collector.MetricBindingScheduler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
@@ -32,8 +33,14 @@ public class ThreadPoolConfig {
         executor.setMaxPoolSize(properties.getMetricPoolMax());
         executor.setQueueCapacity(properties.getMetricPoolQueue());
         executor.setThreadNamePrefix("metric-collect-");
-        // 队列满时由调用线程执行，避免任务丢失
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy() {
+            @Override
+            public void rejectedExecution(Runnable task, ThreadPoolExecutor threadPool) {
+                if (task instanceof MetricBindingScheduler.RejectedTask) {
+                    ((MetricBindingScheduler.RejectedTask) task).rejected();
+                }
+            }
+        });
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);
         executor.initialize();

@@ -25,6 +25,12 @@ public class CollectorProperties {
     /** 指标采集线程池队列容量 */
     private Integer metricPoolQueue = 500;
 
+    /** 每轮可分发的到期绑定上限 */
+    private Integer metricDispatchBatchSize = 100;
+
+    /** 线程池拒绝或状态跳过后的最小退避时间（秒） */
+    private Integer metricDispatchBackoffSec = 5;
+
     /** 操作任务线程池核心线程数 */
     private Integer opPoolCore = 4;
 

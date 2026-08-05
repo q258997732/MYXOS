@@ -111,6 +111,12 @@ public interface MetricSnapshotMapper extends BaseMapper<MetricSnapshot> {
             "WHERE s.device_id = #{deviceId} AND s.deleted = 0")
     List<MetricSnapshot> selectLatestPerTypeByDevice(@Param("deviceId") Long deviceId);
 
+    @Select("SELECT * FROM metric_snapshot WHERE device_id = #{deviceId} AND metric_code = #{metricCode} "
+            + "AND android_name = #{androidName} AND deleted = 0 ORDER BY collected_at DESC LIMIT 1")
+    MetricSnapshot selectLatestByDeviceMetricCodeAndAndroidName(@Param("deviceId") Long deviceId,
+                                                                 @Param("metricCode") String metricCode,
+                                                                 @Param("androidName") String androidName);
+
     /**
      * 批量删除截止时间之前的指标快照
      *

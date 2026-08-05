@@ -34,7 +34,7 @@ public class DataCleanupJob {
     @Scheduled(cron = "${myxos.cleanup.cron:0 0 3 * * ?}")
     public void cleanup() {
         log.info("开始执行数据清理任务");
-        int metricDays = Integer.parseInt(getConfig("metric.retention.days", "7"));
+        int metricDays = Integer.parseInt(getConfig("metric.retention.days", "30"));
         int logDays = Integer.parseInt(getConfig("log.retention.days", "30"));
         int alarmDays = Integer.parseInt(getConfig("alarm.retention.days", "90"));
 

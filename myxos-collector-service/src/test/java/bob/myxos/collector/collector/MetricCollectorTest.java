@@ -87,9 +87,8 @@ class MetricCollectorTest {
         assertNotNull(deviceCaptor.getValue().getLastSeenAt());
 
         Map<String, MetricSnapshot> byType = captureSnapshotsByType();
-        // VERSION + ANDROID_ONLINE + ANDROID_OFFLINE + ONLINE + OFFLINE
-        assertEquals(5, byType.size());
-        assertEquals("1.2.3", byType.get(MetricType.VERSION.name()).getMetricValue());
+        // 健康任务只保留设备和实例状态快照，具体指标由绑定调度器采集。
+        assertEquals(4, byType.size());
         assertEquals(BigDecimal.ONE, byType.get(MetricType.ONLINE.name()).getMetricNum());
         assertEquals(BigDecimal.ZERO, byType.get(MetricType.OFFLINE.name()).getMetricNum());
         assertEquals(BigDecimal.ZERO, byType.get(MetricType.ANDROID_ONLINE.name()).getMetricNum());

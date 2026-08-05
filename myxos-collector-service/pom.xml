@@ -22,6 +22,11 @@
             <artifactId>myxos-mytos-client</artifactId>
         </dependency>
         <dependency>
+            <groupId>bob.myxos</groupId>
+            <artifactId>myxos-main-service</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
