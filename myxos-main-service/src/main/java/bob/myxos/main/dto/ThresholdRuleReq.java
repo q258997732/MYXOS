@@ -23,15 +23,17 @@ public class ThresholdRuleReq {
     private String name;
 
     /** 指标类型 */
-    @NotBlank(message = "指标类型不能为空")
     private String metricType;
 
+    /** 指标目录编码；优先于历史 metricType。 */
+    private String metricCode;
+
     /** 条件类型：NUMERIC / STRING / NONE，为空时按 NUMERIC 处理 */
-    @Pattern(regexp = "^(NUMERIC|STRING|NONE)$", message = "条件类型仅支持 NUMERIC/STRING/NONE")
+    @Pattern(regexp = "^(NUMERIC|STRING|ENUM|NONE)$", message = "条件类型仅支持 NUMERIC/STRING/ENUM/NONE")
     private String conditionType;
 
     /** 比较操作：GT / GTE / LT / LTE / EQ / NE / CONTAINS（conditionType=NONE 时可空） */
-    @Pattern(regexp = "^(GT|GTE|LT|LTE|EQ|NE|CONTAINS)$", message = "比较操作仅支持 GT/GTE/LT/LTE/EQ/NE/CONTAINS")
+    @Pattern(regexp = "^(GT|GTE|LT|LTE|EQ|NE|CONTAINS|NOT_CONTAINS|IN|NOT_IN)$", message = "比较操作不合法")
     private String compareOp;
 
     /** 阈值（conditionType=NUMERIC 时必填，由 Service 层校验） */
@@ -41,6 +43,10 @@ public class ThresholdRuleReq {
     /** 字符判断目标值（conditionType=STRING 时必填，由 Service 层校验） */
     @Size(max = 255, message = "字符判断目标值长度不能超过 255")
     private String thresholdText;
+
+    /** 枚举阈值选项 JSON 数组。 */
+    @Size(max = 2048, message = "枚举阈值选项长度不能超过 2048")
+    private String thresholdOptions;
 
     /** 触发模式：DURATION / CONSECUTIVE */
     @NotBlank(message = "触发模式不能为空")

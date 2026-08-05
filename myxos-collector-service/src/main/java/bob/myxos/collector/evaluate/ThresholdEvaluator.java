@@ -3,6 +3,7 @@ package bob.myxos.collector.evaluate;
 import bob.myxos.collector.execute.ActionExecutor;
 import bob.myxos.collector.execute.ActionExecutorRegistry;
 import bob.myxos.common.enums.CompareOp;
+import bob.myxos.common.enums.ConditionType;
 import bob.myxos.common.enums.ScopeType;
 import bob.myxos.domain.entity.AlarmEvent;
 import bob.myxos.domain.entity.Device;
@@ -78,7 +79,10 @@ public class ThresholdEvaluator {
      * 字符规则（thresholdText 非空）使用 {@link MetricSnapshot#getMetricValue()} 进行比较
      */
     private void evaluateOne(Device device, MetricSnapshot snapshot) {
-        List<RuleCache.RuleWithActions> rules = ruleCache.getByMetricType(snapshot.getMetricType());
+        String metricKey = snapshot.getMetricCode();
+        List<RuleCache.RuleWithActions> rules = metricKey == null || metricKey.trim().isEmpty()
+                ? ruleCache.getByMetricType(snapshot.getMetricType())
+                : ruleCache.getByMetricCode(metricKey);
         if (rules.isEmpty()) {
             return;
         }
@@ -87,6 +91,11 @@ public class ThresholdEvaluator {
             ThresholdRule rule = rwa.getRule();
             try {
                 if (!matchScope(rule, device, androidName)) {
+                    continue;
+                }
+                if (!isTextRule(rule) && !isValidNumericSnapshot(snapshot)) {
+                    log.debug("跳过不可数值化的指标快照：deviceId={}, metricCode={}, value={}",
+                            device.getId(), metricKey, snapshot.getMetricValue());
                     continue;
                 }
                 boolean breached = isBreached(rule, device, snapshot);
@@ -126,7 +135,7 @@ public class ThresholdEvaluator {
      * 计算告警展示用指标值：字符规则取字符串值，数值规则取数值文本
      */
     private String displayValue(ThresholdRule rule, MetricSnapshot snapshot) {
-        if (isStringRule(rule)) {
+        if (isTextRule(rule)) {
             return snapshot.getMetricValue();
         }
         return snapshot.getMetricNum() == null ? null : snapshot.getMetricNum().toPlainString();
@@ -136,7 +145,17 @@ public class ThresholdEvaluator {
      * 是否为字符判断规则（thresholdText 非空）
      */
     private boolean isStringRule(ThresholdRule rule) {
-        return rule.getThresholdText() != null && !rule.getThresholdText().isEmpty();
+        return ConditionType.STRING.name().equals(rule.getConditionType())
+                || ConditionType.ENUM.name().equals(rule.getConditionType())
+                || (rule.getThresholdText() != null && !rule.getThresholdText().isEmpty());
+    }
+
+    private boolean isTextRule(ThresholdRule rule) {
+        return isStringRule(rule);
+    }
+
+    private boolean isValidNumericSnapshot(MetricSnapshot snapshot) {
+        return snapshot.getMetricNum() != null && !"UNKNOWN".equalsIgnoreCase(snapshot.getMetricValue());
     }
 
     /**
@@ -258,8 +277,40 @@ public class ThresholdEvaluator {
                 return !value.trim().equals(target.trim());
             case CONTAINS:
                 return value.contains(target);
+            case NOT_CONTAINS:
+                return !value.contains(target);
             default:
                 return false;
+        }
+    }
+
+    /** 枚举值与 JSON 数组阈值比较。 */
+    boolean compareEnum(String value, String optionsJson, CompareOp op) {
+        if (value == null || optionsJson == null || op == null) {
+            return false;
+        }
+        try {
+            JsonNode options = objectMapper.readTree(optionsJson);
+            if (!options.isArray()) {
+                return false;
+            }
+            boolean contained = false;
+            for (JsonNode option : options) {
+                if (value.trim().equals(option.asText().trim())) {
+                    contained = true;
+                    break;
+                }
+            }
+            if (op == CompareOp.IN || op == CompareOp.EQ) {
+                return contained;
+            }
+            if (op == CompareOp.NOT_IN || op == CompareOp.NE) {
+                return !contained;
+            }
+            return false;
+        } catch (Exception e) {
+            log.warn("枚举阈值不是有效 JSON 数组：{}", optionsJson);
+            return false;
         }
     }
 
@@ -275,7 +326,11 @@ public class ThresholdEvaluator {
             return false;
         }
         boolean stringRule = isStringRule(rule);
-        boolean currentBreach = stringRule
+        boolean enumRule = ConditionType.ENUM.name().equals(rule.getConditionType())
+                || op == CompareOp.IN || op == CompareOp.NOT_IN;
+        boolean currentBreach = enumRule
+                ? compareEnum(snapshot.getMetricValue(), rule.getThresholdText(), op)
+                : stringRule
                 ? compareText(snapshot.getMetricValue(), rule.getThresholdText(), op)
                 : compare(snapshot.getMetricNum(), rule.getThresholdValue(), op);
         if (!currentBreach) {
@@ -298,7 +353,9 @@ public class ThresholdEvaluator {
             if (recent == null || recent.isEmpty()) {
                 return false;
             }
-            return recent.stream().allMatch(s -> stringRule
+            return recent.stream().allMatch(s -> enumRule
+                    ? compareEnum(s.getMetricValue(), rule.getThresholdText(), op)
+                    : stringRule
                     ? compareText(s.getMetricValue(), rule.getThresholdText(), op)
                     : compare(s.getMetricNum(), rule.getThresholdValue(), op));
         }
@@ -311,7 +368,9 @@ public class ThresholdEvaluator {
             if (recent == null || recent.size() < count) {
                 return false;
             }
-            return recent.stream().allMatch(s -> stringRule
+            return recent.stream().allMatch(s -> enumRule
+                    ? compareEnum(s.getMetricValue(), rule.getThresholdText(), op)
+                    : stringRule
                     ? compareText(s.getMetricValue(), rule.getThresholdText(), op)
                     : compare(s.getMetricNum(), rule.getThresholdValue(), op));
         }
@@ -328,6 +387,15 @@ public class ThresholdEvaluator {
      */
     private List<MetricSnapshot> selectHistory(Device device, ThresholdRule rule, MetricSnapshot snapshot,
                                                LocalDateTime startTime, Integer limit) {
+        if (snapshot.getMetricCode() != null && !snapshot.getMetricCode().trim().isEmpty()
+                && snapshot.getTargetType() != null && !snapshot.getTargetType().trim().isEmpty()) {
+            String androidName = snapshot.getAndroidName() == null ? "" : snapshot.getAndroidName();
+            return startTime != null
+                    ? metricSnapshotMapper.selectRecentByDeviceMetricCodeTargetAndAndroidName(device.getId(),
+                    snapshot.getMetricCode(), snapshot.getTargetType(), androidName, startTime)
+                    : metricSnapshotMapper.selectLatestByDeviceMetricCodeTargetAndAndroidName(device.getId(),
+                    snapshot.getMetricCode(), snapshot.getTargetType(), androidName, limit);
+        }
         String extra = snapshot.getExtra();
         boolean hasExtra = extra != null && !extra.isEmpty();
         if (startTime != null) {

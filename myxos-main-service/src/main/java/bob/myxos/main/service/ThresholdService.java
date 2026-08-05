@@ -64,6 +64,9 @@ public interface ThresholdService {
      */
     List<ThresholdAction> listActions(Long ruleId);
 
+    /** 查询枚举指标可用于阈值的已验证选项。 */
+    List<String> listEnumOptions(String metricCode);
+
     /**
      * 删除规则及其动作（逻辑删除）
      *

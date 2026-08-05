@@ -87,6 +87,12 @@ public class ThresholdController {
         return Result.ok(data);
     }
 
+    /** 查询枚举指标的已验证阈值选项。 */
+    @GetMapping("/metric-options")
+    public Result<List<String>> metricOptions(@RequestParam String metricCode) {
+        return Result.ok(thresholdService.listEnumOptions(metricCode));
+    }
+
     /**
      * 更新阈值规则
      *

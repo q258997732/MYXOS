@@ -34,7 +34,7 @@ public class RuleCache {
     private final ThresholdRuleMapper ruleMapper;
     private final ThresholdActionMapper actionMapper;
 
-    /** metricType -> 规则与动作列表 */
+    /** metricCode（历史规则回退 metricType） -> 规则与动作列表 */
     private final Map<String, List<RuleWithActions>> cache = new ConcurrentHashMap<>();
 
     /**
@@ -80,7 +80,9 @@ public class RuleCache {
                 RuleWithActions rwa = new RuleWithActions();
                 rwa.rule = rule;
                 rwa.actions = actionsByRule.getOrDefault(rule.getId(), Collections.emptyList());
-                newCache.computeIfAbsent(rule.getMetricType(), k -> new ArrayList<>()).add(rwa);
+                String metricKey = rule.getMetricCode() == null || rule.getMetricCode().trim().isEmpty()
+                        ? rule.getMetricType() : rule.getMetricCode();
+                newCache.computeIfAbsent(metricKey, k -> new ArrayList<>()).add(rwa);
             }
         }
 
@@ -98,6 +100,11 @@ public class RuleCache {
      */
     public List<RuleWithActions> getByMetricType(String metricType) {
         return cache.getOrDefault(metricType, Collections.emptyList());
+    }
+
+    /** 按稳定指标编码读取规则。 */
+    public List<RuleWithActions> getByMetricCode(String metricCode) {
+        return cache.getOrDefault(metricCode, Collections.emptyList());
     }
 
     /**

@@ -205,6 +205,51 @@ class ThresholdEvaluatorTest {
     }
 
     @Test
+    @DisplayName("枚举规则应按指标编码匹配，并支持 IN 与 NOT_IN")
+    void enumRuleUsesMetricCodeAndCollectionOperators() {
+        Device device = device(1L, 1L);
+        ThresholdRule rule = rule("旧指标名", CompareOp.IN.name(), null, "DURATION", 0, 0, ScopeType.ALL.name(), null);
+        rule.setMetricCode("ANDROID_STATUS");
+        rule.setConditionType("ENUM");
+        rule.setThresholdText("[\"RUNNING\",\"STOPPED\"]");
+        MetricSnapshot snapshot = new MetricSnapshot();
+        snapshot.setDeviceId(1L);
+        snapshot.setMetricType("旧指标名");
+        snapshot.setMetricCode("ANDROID_STATUS");
+        snapshot.setMetricValue("STOPPED");
+
+        when(ruleCache.getByMetricCode("ANDROID_STATUS"))
+                .thenReturn(Collections.singletonList(new RuleCache.RuleWithActions(rule, Collections.emptyList())));
+        when(alarmEventMapper.selectFiringByRuleDeviceAndAndroid(anyLong(), anyLong(), any())).thenReturn(null);
+
+        evaluator.evaluate(device, Collections.singletonList(snapshot));
+
+        verify(alarmEventMapper).insert(any(AlarmEvent.class));
+        verify(ruleCache, never()).getByMetricType("旧指标名");
+        assertTrue(evaluator.compareEnum("STOPPED", "[\"RUNNING\",\"STOPPED\"]", CompareOp.IN));
+        assertTrue(evaluator.compareEnum("STOPPED", "[\"RUNNING\"]", CompareOp.NOT_IN));
+    }
+
+    @Test
+    @DisplayName("数值快照为 UNKNOWN 或无法数值化时不应恢复或触发告警")
+    void unknownNumericSnapshotIsSkipped() {
+        Device device = device(1L, 1L);
+        ThresholdRule rule = rule("CPU", CompareOp.GT.name(), new BigDecimal("80"), "DURATION", 0, 0, ScopeType.ALL.name(), null);
+        MetricSnapshot snapshot = new MetricSnapshot();
+        snapshot.setDeviceId(1L);
+        snapshot.setMetricType("CPU");
+        snapshot.setMetricValue("UNKNOWN");
+
+        when(ruleCache.getByMetricType("CPU"))
+                .thenReturn(Collections.singletonList(new RuleCache.RuleWithActions(rule, Collections.emptyList())));
+
+        evaluator.evaluate(device, Collections.singletonList(snapshot));
+
+        verify(alarmEventMapper, never()).insert(any(AlarmEvent.class));
+        verify(alarmEventMapper, never()).updateById(any(AlarmEvent.class));
+    }
+
+    @Test
     @DisplayName("字符判断规则应比较快照的字符串值并触发告警")
     void evaluateShouldFireAlarmForStringRule() {
         // Arrange

@@ -111,6 +111,35 @@ public interface MetricSnapshotMapper extends BaseMapper<MetricSnapshot> {
             "WHERE s.device_id = #{deviceId} AND s.deleted = 0")
     List<MetricSnapshot> selectLatestPerTypeByDevice(@Param("deviceId") Long deviceId);
 
+    /** 按指标编码、目标类型和安卓实例分别查询最新快照。 */
+    @Select("SELECT s.* FROM metric_snapshot s INNER JOIN (" +
+            "SELECT metric_code, target_type, android_name, MAX(collected_at) AS max_collected_at " +
+            "FROM metric_snapshot WHERE device_id = #{deviceId} AND deleted = 0 " +
+            "GROUP BY metric_code, target_type, android_name" +
+            ") latest ON s.metric_code = latest.metric_code " +
+            "AND s.target_type = latest.target_type AND s.android_name = latest.android_name " +
+            "AND s.collected_at = latest.max_collected_at " +
+            "WHERE s.device_id = #{deviceId} AND s.deleted = 0")
+    List<MetricSnapshot> selectLatestPerMetricTargetByDevice(@Param("deviceId") Long deviceId);
+
+    @Select("SELECT * FROM metric_snapshot WHERE device_id = #{deviceId} AND metric_code = #{metricCode} " +
+            "AND target_type = #{targetType} AND android_name = #{androidName} AND collected_at >= #{startTime} " +
+            "AND deleted = 0 ORDER BY collected_at DESC")
+    List<MetricSnapshot> selectRecentByDeviceMetricCodeTargetAndAndroidName(@Param("deviceId") Long deviceId,
+                                                                              @Param("metricCode") String metricCode,
+                                                                              @Param("targetType") String targetType,
+                                                                              @Param("androidName") String androidName,
+                                                                              @Param("startTime") LocalDateTime startTime);
+
+    @Select("SELECT * FROM metric_snapshot WHERE device_id = #{deviceId} AND metric_code = #{metricCode} " +
+            "AND target_type = #{targetType} AND android_name = #{androidName} AND deleted = 0 " +
+            "ORDER BY collected_at DESC LIMIT #{limit}")
+    List<MetricSnapshot> selectLatestByDeviceMetricCodeTargetAndAndroidName(@Param("deviceId") Long deviceId,
+                                                                              @Param("metricCode") String metricCode,
+                                                                              @Param("targetType") String targetType,
+                                                                              @Param("androidName") String androidName,
+                                                                              @Param("limit") Integer limit);
+
     @Select("SELECT * FROM metric_snapshot WHERE device_id = #{deviceId} AND metric_code = #{metricCode} "
             + "AND android_name = #{androidName} AND deleted = 0 ORDER BY collected_at DESC LIMIT 1")
     MetricSnapshot selectLatestByDeviceMetricCodeAndAndroidName(@Param("deviceId") Long deviceId,

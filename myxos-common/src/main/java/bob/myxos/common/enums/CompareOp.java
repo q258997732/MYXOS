@@ -18,6 +18,8 @@ public enum CompareOp {
     NE,
     /** 包含（仅用于字符判断） */
     CONTAINS,
+    /** 不包含（仅用于字符串判断） */
+    NOT_CONTAINS,
     /** 属于集合 */
     IN,
     /** 不属于集合 */

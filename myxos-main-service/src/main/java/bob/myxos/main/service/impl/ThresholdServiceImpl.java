@@ -5,6 +5,10 @@ import bob.myxos.common.enums.ConditionType;
 import bob.myxos.common.exception.BizException;
 import bob.myxos.domain.entity.ThresholdAction;
 import bob.myxos.domain.entity.ThresholdRule;
+import bob.myxos.domain.entity.MetricCatalog;
+import bob.myxos.domain.entity.MetricTemplateItem;
+import bob.myxos.domain.mapper.MetricCatalogMapper;
+import bob.myxos.domain.mapper.MetricTemplateItemMapper;
 import bob.myxos.domain.mapper.ThresholdActionMapper;
 import bob.myxos.domain.mapper.ThresholdRuleMapper;
 import bob.myxos.main.dto.ThresholdRuleReq;
@@ -16,9 +20,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -30,14 +39,18 @@ public class ThresholdServiceImpl implements ThresholdService {
 
     private final ThresholdRuleMapper ruleMapper;
     private final ThresholdActionMapper actionMapper;
+    private final MetricCatalogMapper catalogMapper;
+    private final MetricTemplateItemMapper templateItemMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ThresholdRule create(ThresholdRuleReq req) {
-        normalizeCondition(req);
+        normalizeCondition(req, resolveCatalog(req));
         ThresholdRule rule = new ThresholdRule();
         rule.setName(req.getName());
-        rule.setMetricType(req.getMetricType());
+        rule.setMetricType(resolveMetricType(req));
+        rule.setMetricCode(resolveMetricCode(req));
         rule.setConditionType(req.getConditionType());
         rule.setCompareOp(req.getCompareOp());
         rule.setThresholdValue(req.getThresholdValue());
@@ -60,21 +73,26 @@ public class ThresholdServiceImpl implements ThresholdService {
     @Transactional(rollbackFor = Exception.class)
     public ThresholdRule update(Long id, ThresholdRuleReq req) {
         ThresholdRule existing = requireRule(id);
-        normalizeCondition(req);
+        normalizeCondition(req, resolveCatalog(req));
+        boolean durationMode = "DURATION".equals(req.getTriggerMode());
+        boolean consecutiveMode = "CONSECUTIVE".equals(req.getTriggerMode());
 
         // 使用 UpdateWrapper 显式 set：thresholdValue/thresholdText/scopeId/scopeIds/scopeAndroidName
         // 均可为 null，updateById 会忽略 null 字段导致旧值残留（如切换条件类型后旧阈值清不掉）
         ruleMapper.update(null, new LambdaUpdateWrapper<ThresholdRule>()
                 .eq(ThresholdRule::getId, id)
                 .set(ThresholdRule::getName, req.getName())
-                .set(ThresholdRule::getMetricType, req.getMetricType())
+                .set(ThresholdRule::getMetricType, resolveMetricType(req))
+                .set(ThresholdRule::getMetricCode, resolveMetricCode(req))
                 .set(ThresholdRule::getConditionType, req.getConditionType())
                 .set(ThresholdRule::getCompareOp, req.getCompareOp())
                 .set(ThresholdRule::getThresholdValue, req.getThresholdValue())
                 .set(ThresholdRule::getThresholdText, req.getThresholdText())
                 .set(ThresholdRule::getTriggerMode, req.getTriggerMode())
-                .set(ThresholdRule::getDurationSec, req.getDurationSec())
-                .set(ThresholdRule::getConsecutiveCount, req.getConsecutiveCount())
+                .set(!durationMode || req.getDurationSec() != null, ThresholdRule::getDurationSec,
+                        durationMode ? req.getDurationSec() : null)
+                .set(!consecutiveMode || req.getConsecutiveCount() != null, ThresholdRule::getConsecutiveCount,
+                        consecutiveMode ? req.getConsecutiveCount() : null)
                 .set(ThresholdRule::getScopeType, req.getScopeType())
                 .set(ThresholdRule::getScopeId, req.getScopeId())
                 .set(ThresholdRule::getScopeIds, joinScopeIds(req.getScopeIds()))
@@ -90,14 +108,17 @@ public class ThresholdServiceImpl implements ThresholdService {
         saveActions(id, req.getActions());
 
         existing.setName(req.getName());
-        existing.setMetricType(req.getMetricType());
+        existing.setMetricType(resolveMetricType(req));
+        existing.setMetricCode(resolveMetricCode(req));
         existing.setConditionType(req.getConditionType());
         existing.setCompareOp(req.getCompareOp());
         existing.setThresholdValue(req.getThresholdValue());
         existing.setThresholdText(req.getThresholdText());
         existing.setTriggerMode(req.getTriggerMode());
-        existing.setDurationSec(req.getDurationSec());
-        existing.setConsecutiveCount(req.getConsecutiveCount());
+        existing.setDurationSec(durationMode && req.getDurationSec() == null
+                ? existing.getDurationSec() : (durationMode ? req.getDurationSec() : null));
+        existing.setConsecutiveCount(consecutiveMode && req.getConsecutiveCount() == null
+                ? existing.getConsecutiveCount() : (consecutiveMode ? req.getConsecutiveCount() : null));
         existing.setScopeType(req.getScopeType());
         existing.setScopeId(req.getScopeId());
         existing.setScopeIds(joinScopeIds(req.getScopeIds()));
@@ -154,6 +175,16 @@ public class ThresholdServiceImpl implements ThresholdService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<String> listEnumOptions(String metricCode) {
+        MetricCatalog catalog = requireCatalog(metricCode);
+        if (!"ENUM".equals(catalog.getValueType())) {
+            throw new BizException("该指标不是枚举类型");
+        }
+        return collectEnumOptions(catalog.getId());
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         requireRule(id);
@@ -188,7 +219,14 @@ public class ThresholdServiceImpl implements ThresholdService {
      *
      * @param req 规则请求
      */
-    private void normalizeCondition(ThresholdRuleReq req) {
+    private void normalizeCondition(ThresholdRuleReq req, MetricCatalog catalog) {
+        if (catalog != null) {
+            if (catalog.getThresholdEnabled() == null || catalog.getThresholdEnabled() != 1) {
+                throw new BizException("该指标不支持配置阈值");
+            }
+            normalizeCatalogCondition(req, catalog);
+            return;
+        }
         String conditionType = req.getConditionType() == null || req.getConditionType().trim().isEmpty()
                 ? ConditionType.NUMERIC.name() : req.getConditionType().trim().toUpperCase();
         ConditionType type;
@@ -228,6 +266,50 @@ public class ThresholdServiceImpl implements ThresholdService {
         req.setConditionType(conditionType);
     }
 
+    private void normalizeCatalogCondition(ThresholdRuleReq req, MetricCatalog catalog) {
+        String valueType = catalog.getValueType();
+        if ("NUMBER".equals(valueType)) {
+            req.setConditionType(ConditionType.NUMERIC.name());
+            if (!isNumericCompareOp(req.getCompareOp()) || req.getThresholdValue() == null) {
+                throw new BizException("数值指标需配置有效的数值比较条件");
+            }
+            req.setThresholdText(null);
+            req.setThresholdOptions(null);
+            return;
+        }
+        if ("STRING".equals(valueType)) {
+            req.setConditionType(ConditionType.STRING.name());
+            if (!isStringCompareOp(req.getCompareOp()) || req.getThresholdText() == null || req.getThresholdText().trim().isEmpty()) {
+                throw new BizException("字符串指标需配置有效的文本比较条件");
+            }
+            req.setThresholdValue(null);
+            req.setThresholdOptions(null);
+            return;
+        }
+        if ("ENUM".equals(valueType)) {
+            if (!isEnumCompareOp(req.getCompareOp())) {
+                throw new BizException("枚举指标仅支持 EQ/NE/IN/NOT_IN");
+            }
+            List<String> values = parseEnumRequestOptions(req);
+            if (values.isEmpty()) {
+                throw new BizException("枚举指标必须选择至少一个选项");
+            }
+            Set<String> available = new LinkedHashSet<>(collectEnumOptions(catalog.getId()));
+            if (!available.containsAll(values)) {
+                throw new BizException("枚举阈值包含未验证的选项");
+            }
+            try {
+                req.setThresholdText(objectMapper.writeValueAsString(values));
+            } catch (Exception e) {
+                throw new BizException("枚举阈值序列化失败");
+            }
+            req.setConditionType(ConditionType.ENUM.name());
+            req.setThresholdValue(null);
+            return;
+        }
+        throw new BizException("未知的指标值类型: " + valueType);
+    }
+
     private boolean isNumericCompareOp(String compareOp) {
         return CompareOp.GT.name().equals(compareOp) || CompareOp.GTE.name().equals(compareOp)
                 || CompareOp.LT.name().equals(compareOp) || CompareOp.LTE.name().equals(compareOp)
@@ -236,7 +318,98 @@ public class ThresholdServiceImpl implements ThresholdService {
 
     private boolean isStringCompareOp(String compareOp) {
         return CompareOp.EQ.name().equals(compareOp) || CompareOp.NE.name().equals(compareOp)
-                || CompareOp.CONTAINS.name().equals(compareOp);
+                || CompareOp.CONTAINS.name().equals(compareOp) || CompareOp.NOT_CONTAINS.name().equals(compareOp);
+    }
+
+    private boolean isEnumCompareOp(String compareOp) {
+        return CompareOp.EQ.name().equals(compareOp) || CompareOp.NE.name().equals(compareOp)
+                || CompareOp.IN.name().equals(compareOp) || CompareOp.NOT_IN.name().equals(compareOp);
+    }
+
+    private MetricCatalog resolveCatalog(ThresholdRuleReq req) {
+        String code = resolveMetricCode(req);
+        if (code == null) {
+            return null;
+        }
+        MetricCatalog catalog = catalogMapper.selectOne(new LambdaQueryWrapper<MetricCatalog>()
+                .eq(MetricCatalog::getCode, code).eq(MetricCatalog::getDeleted, 0));
+        if (catalog == null && req.getMetricCode() != null && !req.getMetricCode().trim().isEmpty()) {
+            throw new BizException("指标目录不存在");
+        }
+        return catalog;
+    }
+
+    private MetricCatalog requireCatalog(String metricCode) {
+        if (metricCode == null || metricCode.trim().isEmpty()) {
+            throw new BizException("指标编码不能为空");
+        }
+        MetricCatalog catalog = catalogMapper.selectOne(new LambdaQueryWrapper<MetricCatalog>()
+                .eq(MetricCatalog::getCode, metricCode.trim()).eq(MetricCatalog::getDeleted, 0));
+        if (catalog == null) {
+            throw new BizException("指标目录不存在");
+        }
+        return catalog;
+    }
+
+    private String resolveMetricCode(ThresholdRuleReq req) {
+        if (req.getMetricCode() != null && !req.getMetricCode().trim().isEmpty()) {
+            return req.getMetricCode().trim();
+        }
+        return req.getMetricType() == null || req.getMetricType().trim().isEmpty() ? null : req.getMetricType().trim();
+    }
+
+    private String resolveMetricType(ThresholdRuleReq req) {
+        String metricCode = resolveMetricCode(req);
+        if (metricCode == null) {
+            throw new BizException("指标编码不能为空");
+        }
+        return req.getMetricType() == null || req.getMetricType().trim().isEmpty() ? metricCode : req.getMetricType().trim();
+    }
+
+    private List<String> collectEnumOptions(Long catalogId) {
+        Set<String> values = new LinkedHashSet<>();
+        List<MetricTemplateItem> items = templateItemMapper.selectList(new LambdaQueryWrapper<MetricTemplateItem>()
+                .eq(MetricTemplateItem::getMetricCatalogId, catalogId)
+                .eq(MetricTemplateItem::getDeleted, 0)
+                .eq(MetricTemplateItem::getEnabled, 1));
+        if (items != null) {
+            for (MetricTemplateItem item : items) {
+                values.addAll(parseOptions(item.getEnumOptions()));
+            }
+        }
+        return values.stream().sorted().collect(Collectors.toList());
+    }
+
+    private List<String> parseOptions(String json) {
+        if (json == null || json.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        try {
+            List<String> values = objectMapper.readValue(json, new TypeReference<List<String>>() { });
+            if (values == null) {
+                return Collections.emptyList();
+            }
+            return values.stream().filter(value -> value != null && !value.trim().isEmpty())
+                    .map(String::trim).distinct().collect(Collectors.toList());
+        } catch (Exception e) {
+            throw new BizException("枚举选项必须为 JSON 字符串数组");
+        }
+    }
+
+    /** 兼容旧版仅提交单个 thresholdText 的枚举规则。 */
+    private List<String> parseEnumRequestOptions(ThresholdRuleReq req) {
+        if (req.getThresholdOptions() != null && !req.getThresholdOptions().trim().isEmpty()) {
+            return parseOptions(req.getThresholdOptions());
+        }
+        if ((req.getMetricCode() == null || req.getMetricCode().trim().isEmpty())
+                && req.getThresholdText() != null && !req.getThresholdText().trim().isEmpty()) {
+            String text = req.getThresholdText().trim();
+            if (text.startsWith("[")) {
+                return parseOptions(text);
+            }
+            return Collections.singletonList(text);
+        }
+        return Collections.emptyList();
     }
 
     /**
@@ -256,16 +429,13 @@ public class ThresholdServiceImpl implements ThresholdService {
     }
 
     /**
-     * 规范化安卓实例名：仅 ANDROID_STATUS 指标保留，其余指标强制置空；空白串按 null 处理
+     * 规范化安卓实例名：空白串按 null 处理。安卓实例指标均可按实例名称限定范围。
      *
      * @param req 规则请求
      * @return 规范化后的实例名，可能为 null
      */
     private String normalizeScopeAndroidName(ThresholdRuleReq req) {
         if (req.getScopeAndroidName() == null || req.getScopeAndroidName().trim().isEmpty()) {
-            return null;
-        }
-        if (!"ANDROID_STATUS".equals(req.getMetricType())) {
             return null;
         }
         return req.getScopeAndroidName().trim();
