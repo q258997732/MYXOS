@@ -20,6 +20,7 @@ public final class MetricDefinitionRegistry {
     public static final String TASK_TOTAL = "TASK_TOTAL";
     public static final String RECENT_APPS = "RECENT_APPS";
     public static final String ANDROID_STATUS = "ANDROID_STATUS";
+    public static final String APP_PROCESS_STATE = "APP_PROCESS_STATE";
 
     private static final Map<String, String> READ_ONLY_ADB_COMMANDS;
     private static final List<MetricDefinition> DEFINITIONS;
@@ -33,6 +34,7 @@ public final class MetricDefinitionRegistry {
         commands.put(CPU_USAGE_PERCENT, "top -b -n 1");
         commands.put(TASK_TOTAL, "top -b -n 1");
         commands.put(RECENT_APPS, "dumpsys activity recents");
+        commands.put(APP_PROCESS_STATE, "dumpsys activity processes");
         READ_ONLY_ADB_COMMANDS = Collections.unmodifiableMap(commands);
 
         DEFINITIONS = Collections.unmodifiableList(Arrays.asList(
@@ -43,6 +45,7 @@ public final class MetricDefinitionRegistry {
                 definition(CPU_USAGE_PERCENT, "CPU使用率", "NUMBER", "CPU", "%", true),
                 definition(TASK_TOTAL, "任务总数", "NUMBER", "进程", "个", true),
                 definition(RECENT_APPS, "最近应用", "STRING", "应用", null, false),
+                definition(APP_PROCESS_STATE, "应用进程状态", "ENUM", "应用", null, true),
                 new MetricDefinition(ANDROID_STATUS, "安卓状态", "ANDROID_INSTANCE", "ENUM", "状态", null,
                         null, false)
         ));
@@ -73,6 +76,13 @@ public final class MetricDefinitionRegistry {
         STOPPED,
         TRANSITION,
         UNKNOWN
+    }
+
+    public enum AppProcessStatus {
+        FOREGROUND,
+        ACTIVE,
+        RUNNING,
+        STOPPED
     }
 
     private static MetricDefinition definition(String code, String name, String valueType,

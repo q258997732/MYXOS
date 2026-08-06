@@ -76,6 +76,10 @@ public class ThresholdRuleReq {
     @Size(max = 2048, message = "安卓实例名长度不能超过 2048")
     private String scopeAndroidName;
 
+    /** 应用包名（APP_PROCESS_STATE 指标必填） */
+    @Pattern(regexp = "^$|^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+$", message = "应用包名格式不合法")
+    private String scopeAppPackage;
+
     /** 动作列表 */
     @Valid
     private List<ThresholdActionReq> actions;

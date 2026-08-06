@@ -17,6 +17,29 @@ class AndroidMetricParserTest {
     private final AndroidMetricParser parser = new AndroidMetricParser();
 
     @Test
+    void 应按包名解析应用进程的最高运行状态() {
+        String 输出 = "    Proc # 0: fg     T/A/TOP  LCMN  t: 0 21550:com.tencent.wework/u0a93 (top-activity)\n"
+                + "    Proc # 4: prcp   F/S/FGS  -CMN  t: 0 788:com.kingsware.rpa/u0a95 (fg-service)\n"
+                + "    Proc # 5: prcp   F/S/FGS  ---N  t: 0 985:com.kingsware.rpa:cactusRemoteService/u0a95 (fg-service)\n"
+                + "    Proc # 3: svc    b/ /SVC  ----  t: 0 766:com.tencent.wework:pushservice/u0a93 (started-services)\n";
+
+        AndroidMetricParser.AppProcessState 前台 = parser.parseAppProcessState(输出, "com.tencent.wework")
+                .orElseThrow(AssertionError::new);
+        AndroidMetricParser.AppProcessState 活跃 = parser.parseAppProcessState(输出, "com.kingsware.rpa")
+                .orElseThrow(AssertionError::new);
+        AndroidMetricParser.AppProcessState 运行 = parser.parseAppProcessState(输出, "com.example.missing")
+                .orElseThrow(AssertionError::new);
+
+        assertEquals("FOREGROUND", 前台.getStatus());
+        assertEquals(Integer.valueOf(21550), 前台.getPid());
+        assertEquals("TOP", 前台.getRawState());
+        assertEquals("ACTIVE", 活跃.getStatus());
+        assertEquals(Integer.valueOf(788), 活跃.getPid());
+        assertEquals("FGS", 活跃.getRawState());
+        assertEquals("STOPPED", 运行.getStatus());
+    }
+
+    @Test
     void 应从完整top输出解析CPU使用率() {
         String 输出 = "Tasks: 99 total, 1 running, 98 sleeping, 0 stopped, 0 zombie\n"
                 + "800%cpu 36%user 20%nice 40%sys 736%idle 4%iow 0%irq 0%sirq 0%host\n";
@@ -70,6 +93,7 @@ class AndroidMetricParserTest {
         值类型.put(MetricDefinitionRegistry.CPU_USAGE_PERCENT, "NUMBER");
         值类型.put(MetricDefinitionRegistry.TASK_TOTAL, "NUMBER");
         值类型.put(MetricDefinitionRegistry.RECENT_APPS, "STRING");
+        值类型.put(MetricDefinitionRegistry.APP_PROCESS_STATE, "ENUM");
         值类型.put(MetricDefinitionRegistry.ANDROID_STATUS, "ENUM");
         Set<String> Shell命令键 = new HashSet<String>();
         Shell命令键.add(MetricDefinitionRegistry.ANDROID_VERSION);
@@ -79,8 +103,9 @@ class AndroidMetricParserTest {
         Shell命令键.add(MetricDefinitionRegistry.CPU_USAGE_PERCENT);
         Shell命令键.add(MetricDefinitionRegistry.TASK_TOTAL);
         Shell命令键.add(MetricDefinitionRegistry.RECENT_APPS);
+        Shell命令键.add(MetricDefinitionRegistry.APP_PROCESS_STATE);
 
-        assertEquals(8, MetricDefinitionRegistry.definitions().size());
+        assertEquals(9, MetricDefinitionRegistry.definitions().size());
         int Shell命令数量 = 0;
         for (MetricDefinition 定义 : MetricDefinitionRegistry.definitions()) {
             assertEquals("ANDROID_INSTANCE", 定义.getTargetType());
@@ -94,7 +119,7 @@ class AndroidMetricParserTest {
                 assertEquals(null, 定义.getCommandKey());
             }
         }
-        assertEquals(7, Shell命令数量);
+        assertEquals(8, Shell命令数量);
         assertFalse(MetricDefinitionRegistry.findReadOnlyAdbCommand(MetricDefinitionRegistry.ANDROID_STATUS)
                 .isPresent());
     }

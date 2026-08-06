@@ -11,6 +11,7 @@ export const METRIC_LABELS = {
   UPTIME: '运行时长',
   VERSION: '版本号',
   ANDROID_STATUS: '安卓实例状态',
+  APP_PROCESS_STATE: '应用进程状态',
   ONLINE: '设备在线',
   OFFLINE: '设备离线',
   ANDROID_ONLINE: '安卓实例在线数',

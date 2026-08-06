@@ -18,6 +18,8 @@ public class MetricBindingReq {
     @Data
     public static class Item {
         @NotBlank(message = "指标编码不能为空") private String metricCode;
+        @Pattern(regexp = "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+$", message = "应用包名格式不合法")
+        private String appPackage;
         private Integer enabled;
         @Min(15) @Max(86400) private Integer intervalSec;
     }

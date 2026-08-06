@@ -16,6 +16,10 @@ public final class AndroidMetricParser {
     private static final Pattern TASK_TOTAL_PATTERN = Pattern.compile("(?im)^Tasks:\\s*(\\d+)\\s+total(?:,|\\s|$)");
     private static final Pattern CPU_USAGE_PATTERN = Pattern.compile(
             "(?im)^\\s*(\\d+(?:\\.\\d+)?)%cpu\\b[^\\r\\n]*?(\\d+(?:\\.\\d+)?)%idle\\b");
+    private static final Pattern PROCESS_LINE_PATTERN = Pattern.compile(
+            "(?m)^\\s*(?:PERS\\s+#\\s*\\d+|Proc\\s+#\\s*\\d+):.*?\\s"
+                    + "(?:[A-Z]/[A-Z]/)?(TOP|BTOP|FGS|BFGS|IMPF|IMPB|SVC|PER|CACHED)\\s+.*?\\s"
+                    + "(\\d+):([A-Za-z0-9_.$]+)(?::[A-Za-z0-9_.$]+)?/u[0-9A-Za-z]+\\b");
 
     public Optional<Long> parseMemTotalKb(String output) {
         return parseLong(MEM_TOTAL_PATTERN, output);
@@ -68,6 +72,64 @@ public final class AndroidMetricParser {
         } catch (NumberFormatException ignored) {
             return Optional.empty();
         }
+    }
+
+    /** 按包名解析进程状态，同一包存在多个进程时返回最高状态。 */
+    public Optional<AppProcessState> parseAppProcessState(String output, String packageName) {
+        if (packageName == null || packageName.trim().isEmpty()) {
+            return Optional.empty();
+        }
+        AppProcessState best = new AppProcessState("STOPPED", null, null);
+        if (output == null) {
+            return Optional.of(best);
+        }
+        Matcher matcher = PROCESS_LINE_PATTERN.matcher(output);
+        while (matcher.find()) {
+            if (!packageName.trim().equals(matcher.group(3))) {
+                continue;
+            }
+            String rawState = matcher.group(1);
+            AppProcessState candidate = new AppProcessState(normalizeProcessState(rawState),
+                    Integer.valueOf(matcher.group(2)), rawState);
+            if (stateRank(candidate.status) > stateRank(best.status)) {
+                best = candidate;
+            }
+        }
+        return Optional.of(best);
+    }
+
+    private String normalizeProcessState(String rawState) {
+        if ("TOP".equals(rawState) || "BTOP".equals(rawState)) {
+            return "FOREGROUND";
+        }
+        if ("PER".equals(rawState) || "FGS".equals(rawState) || "BFGS".equals(rawState)
+                || "IMPF".equals(rawState) || "IMPB".equals(rawState)) {
+            return "ACTIVE";
+        }
+        return "RUNNING";
+    }
+
+    private int stateRank(String state) {
+        if ("FOREGROUND".equals(state)) return 3;
+        if ("ACTIVE".equals(state)) return 2;
+        if ("RUNNING".equals(state)) return 1;
+        return 0;
+    }
+
+    public static final class AppProcessState {
+        private final String status;
+        private final Integer pid;
+        private final String rawState;
+
+        AppProcessState(String status, Integer pid, String rawState) {
+            this.status = status;
+            this.pid = pid;
+            this.rawState = rawState;
+        }
+
+        public String getStatus() { return status; }
+        public Integer getPid() { return pid; }
+        public String getRawState() { return rawState; }
     }
 
     private Optional<Long> parseLong(Pattern pattern, String output) {

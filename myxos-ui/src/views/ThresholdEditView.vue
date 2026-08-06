@@ -87,6 +87,10 @@
           </div>
         </el-form-item>
 
+        <el-form-item label="应用包名" v-if="form.metricCode === 'APP_PROCESS_STATE'" required>
+          <el-input v-model="form.scopeAppPackage" placeholder="例如 com.example.app" maxlength="255" />
+        </el-form-item>
+
         <!-- 动作配置 -->
         <el-divider content-position="left">动作配置</el-divider>
 
@@ -310,6 +314,7 @@ const form = reactive({
   scopeId: null,
   scopeIds: [],
   scopeAndroidNames: [],
+  scopeAppPackage: '',
   actions: []
 })
 
@@ -468,7 +473,8 @@ const loadDetail = async () => {
       scopeType: rule.scopeType || 'ALL',
       scopeId: rule.scopeId || null,
       scopeIds: parseScopeIds(rule),
-      scopeAndroidNames: parseScopeAndroidNames(rule)
+      scopeAndroidNames: parseScopeAndroidNames(rule),
+      scopeAppPackage: rule.scopeAppPackage || ''
     })
     await loadEnumOptions()
     form.actions.splice(0, form.actions.length)
@@ -516,6 +522,10 @@ const validate = () => {
     ElMessage.warning('请选择至少一台设备')
     return false
   }
+  if (form.metricCode === 'APP_PROCESS_STATE' && !form.scopeAppPackage.trim()) {
+    ElMessage.warning('请填写应用包名')
+    return false
+  }
   return true
 }
 
@@ -542,6 +552,7 @@ const save = async () => {
       scopeIds: form.scopeType === 'DEVICE' ? form.scopeIds : null,
       scopeAndroidName: form.metricType === 'ANDROID_STATUS' && form.scopeAndroidNames.length > 0
         ? form.scopeAndroidNames.join(',') : null,
+      scopeAppPackage: form.metricCode === 'APP_PROCESS_STATE' ? form.scopeAppPackage.trim() : null,
       actions: form.actions
     }
     if (isEdit.value) {

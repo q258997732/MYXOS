@@ -12,6 +12,7 @@ import bob.myxos.domain.mapper.MetricTemplateItemMapper;
 import bob.myxos.domain.mapper.ThresholdActionMapper;
 import bob.myxos.domain.mapper.ThresholdRuleMapper;
 import bob.myxos.main.dto.ThresholdRuleReq;
+import bob.myxos.main.metric.MetricDefinitionRegistry;
 import bob.myxos.main.service.ThresholdService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -26,6 +27,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.Arrays;
 import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -63,6 +65,7 @@ public class ThresholdServiceImpl implements ThresholdService {
         rule.setScopeId(req.getScopeId());
         rule.setScopeIds(joinScopeIds(req.getScopeIds()));
         rule.setScopeAndroidName(normalizeScopeAndroidName(req));
+        rule.setScopeAppPackage(normalizeScopeAppPackage(req));
         rule.setEnabled(1);
         ruleMapper.insert(rule);
 
@@ -97,7 +100,8 @@ public class ThresholdServiceImpl implements ThresholdService {
                 .set(ThresholdRule::getScopeType, req.getScopeType())
                 .set(ThresholdRule::getScopeId, req.getScopeId())
                 .set(ThresholdRule::getScopeIds, joinScopeIds(req.getScopeIds()))
-                .set(ThresholdRule::getScopeAndroidName, normalizeScopeAndroidName(req)));
+                .set(ThresholdRule::getScopeAndroidName, normalizeScopeAndroidName(req))
+                .set(ThresholdRule::getScopeAppPackage, normalizeScopeAppPackage(req)));
 
         // 逻辑删除旧动作：必须走 BaseMapper.delete，@TableLogic 才会生效生成
         // UPDATE ... SET deleted=1；此前用 update(entity) 设置 deleted=1，
@@ -124,6 +128,7 @@ public class ThresholdServiceImpl implements ThresholdService {
         existing.setScopeId(req.getScopeId());
         existing.setScopeIds(joinScopeIds(req.getScopeIds()));
         existing.setScopeAndroidName(normalizeScopeAndroidName(req));
+        existing.setScopeAppPackage(normalizeScopeAppPackage(req));
         return existing;
     }
 
@@ -182,7 +187,9 @@ public class ThresholdServiceImpl implements ThresholdService {
         if (!"ENUM".equals(catalog.getValueType())) {
             throw new BizException("该指标不是枚举类型");
         }
-        return collectEnumOptions(catalog.getId());
+        return MetricDefinitionRegistry.APP_PROCESS_STATE.equals(metricCode)
+                ? Arrays.asList("FOREGROUND", "ACTIVE", "RUNNING", "STOPPED")
+                : collectEnumOptions(catalog.getId());
     }
 
     @Override
@@ -295,7 +302,9 @@ public class ThresholdServiceImpl implements ThresholdService {
             if (values.isEmpty()) {
                 throw new BizException("枚举指标必须选择至少一个选项");
             }
-            Set<String> available = new LinkedHashSet<>(collectEnumOptions(catalog.getId()));
+            Set<String> available = new LinkedHashSet<>(MetricDefinitionRegistry.APP_PROCESS_STATE.equals(catalog.getCode())
+                    ? Arrays.asList("FOREGROUND", "ACTIVE", "RUNNING", "STOPPED")
+                    : collectEnumOptions(catalog.getId()));
             if (!available.containsAll(values)) {
                 throw new BizException("枚举阈值包含未验证的选项");
             }
@@ -444,6 +453,14 @@ public class ThresholdServiceImpl implements ThresholdService {
             return null;
         }
         return req.getScopeAndroidName().trim();
+    }
+
+    private String normalizeScopeAppPackage(ThresholdRuleReq req) {
+        String appPackage = req.getScopeAppPackage() == null ? "" : req.getScopeAppPackage().trim();
+        if (MetricDefinitionRegistry.APP_PROCESS_STATE.equals(resolveMetricCode(req)) && appPackage.isEmpty()) {
+            throw new BizException("应用进程状态阈值必须填写应用包名");
+        }
+        return appPackage.isEmpty() ? null : appPackage;
     }
 
     /**

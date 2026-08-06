@@ -1,6 +1,6 @@
 function indexByMetricCode(bindings = []) {
   return bindings.reduce((result, binding) => {
-    result[binding.metricCode] = binding
+    result[`${binding.metricCode}:${binding.appPackage || ''}`] = binding
     return result
   }, {})
 }
@@ -8,12 +8,16 @@ function indexByMetricCode(bindings = []) {
 export function buildInstanceBindingRows(inheritedBindings = [], directBindings = []) {
   const inherited = indexByMetricCode(inheritedBindings)
   const direct = indexByMetricCode(directBindings)
-  return Array.from(new Set([...Object.keys(inherited), ...Object.keys(direct)])).sort().map(metricCode => ({
-    metricCode,
-    inherited: inherited[metricCode] || null,
-    direct: direct[metricCode] || null,
-    effective: direct[metricCode] || inherited[metricCode] || null
-  }))
+  return Array.from(new Set([...Object.keys(inherited), ...Object.keys(direct)])).sort().map(key => {
+    const binding = direct[key] || inherited[key]
+    return {
+      metricCode: binding.metricCode,
+      ...(binding.appPackage ? { appPackage: binding.appPackage } : {}),
+      inherited: inherited[key] || null,
+      direct: direct[key] || null,
+      effective: direct[key] || inherited[key] || null
+    }
+  })
 }
 
 export function collectionStatusLabel(status) {

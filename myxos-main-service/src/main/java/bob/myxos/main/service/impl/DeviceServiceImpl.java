@@ -31,6 +31,7 @@ import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceUpdateReq;
 import bob.myxos.main.dto.MetricBindingReq;
+import bob.myxos.main.metric.MetricDefinitionRegistry;
 import bob.myxos.main.service.DeviceService;
 import bob.myxos.mytos.MytosClient;
 import bob.myxos.mytos.MytosClientFactory;
@@ -746,7 +747,7 @@ public class DeviceServiceImpl implements DeviceService {
         boolean android = !name.isEmpty();
         if (android && !name.matches("^[A-Za-z0-9_.-]{1,128}$")) throw new BizException("安卓实例名称格式不合法");
         List<MetricBindingReq.Item> directItems = req.getItems() == null ? Collections.<MetricBindingReq.Item>emptyList() : req.getItems();
-        for (MetricBindingReq.Item item : directItems) saveBinding(id, name, android ? "ANDROID_INSTANCE" : "HOST", item.getMetricCode(), item.getEnabled(), item.getIntervalSec());
+        for (MetricBindingReq.Item item : directItems) saveBinding(id, name, android ? "ANDROID_INSTANCE" : "HOST", item.getMetricCode(), item.getAppPackage(), item.getEnabled(), item.getIntervalSec());
         if (req.getTemplateIds() != null) for (Long templateId : req.getTemplateIds()) applyTemplate(id, name, android ? "ANDROID_INSTANCE" : "HOST", templateId);
         return listMetricBindings(id, name);
     }
@@ -758,16 +759,23 @@ public class DeviceServiceImpl implements DeviceService {
         for (MetricTemplateItem item : items) {
             MetricCatalog catalog = metricCatalogMapper.selectById(item.getMetricCatalogId());
             if (catalog == null || !targetType.equals(catalog.getTargetType())) throw new BizException("模板包含不兼容指标");
-            saveBinding(deviceId, androidName, targetType, catalog.getCode(), item.getEnabled(), item.getDefaultIntervalSec());
+            saveBinding(deviceId, androidName, targetType, catalog.getCode(), null, item.getEnabled(), item.getDefaultIntervalSec());
         }
     }
 
-    private void saveBinding(Long deviceId, String androidName, String targetType, String metricCode, Integer enabled, Integer intervalSec) {
+    private void saveBinding(Long deviceId, String androidName, String targetType, String metricCode, String appPackage, Integer enabled, Integer intervalSec) {
         if (metricCode == null || metricCode.trim().isEmpty()) throw new BizException("指标编码不能为空");
         if (intervalSec != null && (intervalSec < 15 || intervalSec > 86400)) throw new BizException("采集频率必须在15至86400秒之间");
         MetricCatalog catalog = metricCatalogMapper.selectOne(new LambdaQueryWrapper<MetricCatalog>().eq(MetricCatalog::getCode, metricCode).eq(MetricCatalog::getTargetType, targetType).eq(MetricCatalog::getDeleted, 0));
         if (catalog == null) throw new BizException("指标不存在或与目标类型不兼容: " + metricCode);
-        MetricBinding exists = metricBindingMapper.selectOne(new LambdaQueryWrapper<MetricBinding>().eq(MetricBinding::getDeviceId, deviceId).eq(MetricBinding::getAndroidName, androidName).eq(MetricBinding::getMetricCode, metricCode).eq(MetricBinding::getDeleted, 0));
+        String normalizedAppPackage = appPackage == null ? "" : appPackage.trim();
+        if (MetricDefinitionRegistry.APP_PROCESS_STATE.equals(metricCode) && normalizedAppPackage.isEmpty()) {
+            throw new BizException("应用进程状态指标必须填写应用包名");
+        }
+        if (!normalizedAppPackage.isEmpty() && !normalizedAppPackage.matches("^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+$")) {
+            throw new BizException("应用包名格式不合法");
+        }
+        MetricBinding exists = metricBindingMapper.selectOne(new LambdaQueryWrapper<MetricBinding>().eq(MetricBinding::getDeviceId, deviceId).eq(MetricBinding::getAndroidName, androidName).eq(MetricBinding::getMetricCode, metricCode).eq(MetricBinding::getAppPackage, normalizedAppPackage).eq(MetricBinding::getDeleted, 0));
         if (exists != null) {
             int effectiveEnabled = enabled == null ? exists.getEnabled() : enabled;
             boolean enabling = !Integer.valueOf(1).equals(exists.getEnabled()) && effectiveEnabled == 1;
@@ -781,7 +789,7 @@ public class DeviceServiceImpl implements DeviceService {
         }
         MetricBinding binding = new MetricBinding();
         binding.setDeviceId(deviceId); binding.setAndroidName(androidName); binding.setTargetType(targetType);
-        binding.setMetricCode(metricCode); binding.setEnabled(enabled == null ? 1 : enabled);
+        binding.setMetricCode(metricCode); binding.setAppPackage(normalizedAppPackage); binding.setEnabled(enabled == null ? 1 : enabled);
         binding.setIntervalSec(intervalSec);
         if (Integer.valueOf(1).equals(binding.getEnabled())) {
             binding.setNextCollectAt(LocalDateTime.now());

@@ -64,6 +64,9 @@ public class ThresholdRule {
     /** 安卓实例名（仅 ANDROID_STATUS 指标生效，为空表示范围内全部实例） */
     private String scopeAndroidName;
 
+    /** 应用包名（应用进程状态指标使用） */
+    private String scopeAppPackage;
+
     /** 是否启用：1 启用，0 禁用 */
     private Integer enabled;
 

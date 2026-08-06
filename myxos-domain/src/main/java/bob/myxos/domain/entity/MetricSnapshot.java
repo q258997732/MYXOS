@@ -37,6 +37,9 @@ public class MetricSnapshot {
     /** 安卓实例名称 */
     private String androidName;
 
+    /** 应用包名（应用进程状态指标使用） */
+    private String appPackage;
+
     /** 指标原始值（字符串形式） */
     private String metricValue;
 

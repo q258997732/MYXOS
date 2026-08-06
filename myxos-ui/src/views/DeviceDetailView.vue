@@ -102,7 +102,7 @@
             <el-row :gutter="16">
               <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in group.metrics" :key="item.metricCode">
                 <el-card class="metric-card" shadow="hover" @click="openMetricHistory(item)">
-                  <div class="metric-title">{{ metricLabel(item.metricCode || item.metricType) }}</div>
+                  <div class="metric-title">{{ metricLabel(item.metricCode || item.metricType) }}{{ item.appPackage ? ` · ${item.appPackage}` : '' }}</div>
                   <div class="metric-value">{{ formatMetricValue(item) }}</div>
                   <div class="metric-time">{{ formatDateTime(item.collectedAt) }}</div>
                 </el-card>
@@ -194,6 +194,8 @@
         <el-select v-model="bindingInstanceName" placeholder="选择安卓实例" filterable style="width: 280px" @change="loadAndroidBindings">
           <el-option v-for="item in androids" :key="item.name" :label="item.name" :value="item.name" />
         </el-select>
+        <el-input v-model="appPackage" placeholder="应用包名，例如 com.example.app" style="width: 300px; margin-left: 12px" />
+        <el-button :disabled="!bindingInstanceName || !appPackage" style="margin-left: 12px" @click="addAppProcessBinding">添加进程监控</el-button>
         <el-select v-model="androidTemplateId" placeholder="选择安卓模板" clearable style="width: 260px; margin-left: 12px">
           <el-option v-for="item in androidTemplates" :key="item.id" :label="item.name" :value="item.id" />
         </el-select>
@@ -201,6 +203,7 @@
         <el-alert v-if="bindingInstanceName" :type="selectedAndroidStatus === 'RUNNING' ? 'success' : 'warning'" :closable="false" show-icon :title="collectionStatusLabel(selectedAndroidStatus)" style="margin: 12px 0" />
         <el-table v-if="bindingInstanceName" :data="instanceBindingRows" size="small" stripe>
           <el-table-column prop="metricCode" label="指标" min-width="170" />
+          <el-table-column prop="appPackage" label="应用包名" min-width="200"><template #default="{ row }">{{ row.appPackage || '-' }}</template></el-table-column>
           <el-table-column label="继承绑定" min-width="140"><template #default="{ row }">{{ bindingText(row.inherited) }}</template></el-table-column>
           <el-table-column label="直接绑定" min-width="140"><template #default="{ row }">{{ bindingText(row.direct) }}</template></el-table-column>
           <el-table-column label="最终有效" min-width="140"><template #default="{ row }">{{ bindingText(row.effective) }}</template></el-table-column>
@@ -355,6 +358,7 @@ const bindingInstanceName = ref('')
 const metricTemplates = reactive([])
 const hostTemplateId = ref(null)
 const androidTemplateId = ref(null)
+const appPackage = ref('')
 
 const androidLoading = ref(false)
 const metricsLoading = ref(false)
@@ -521,13 +525,22 @@ async function saveHostBinding(binding, enabled) {
 }
 
 async function saveAndroidBinding(binding, enabled) {
-  await metricBindingApi.saveAndroid(deviceId, bindingInstanceName.value, { items: [{ metricCode: binding.metricCode, enabled: enabled ? 1 : 0, intervalSec: binding.intervalSec }] })
+  await metricBindingApi.saveAndroid(deviceId, bindingInstanceName.value, { items: [{ metricCode: binding.metricCode, appPackage: binding.appPackage || null, enabled: enabled ? 1 : 0, intervalSec: binding.intervalSec }] })
   await loadAndroidBindings()
+}
+
+async function addAppProcessBinding() {
+  await metricBindingApi.saveAndroid(deviceId, bindingInstanceName.value, {
+    items: [{ metricCode: 'APP_PROCESS_STATE', appPackage: appPackage.value.trim(), enabled: 1, intervalSec: 60 }]
+  })
+  await loadAndroidBindings()
+  appPackage.value = ''
+  ElMessage.success('应用进程监控已添加')
 }
 
 async function overrideAndroidBinding(row) {
   const source = row.direct || row.effective
-  await saveAndroidBinding({ metricCode: row.metricCode, enabled: source.enabled, intervalSec: source.intervalSec }, source.enabled === 1)
+  await saveAndroidBinding({ metricCode: row.metricCode, appPackage: row.appPackage, enabled: source.enabled, intervalSec: source.intervalSec }, source.enabled === 1)
 }
 
 async function toggleAndroidBinding(row) {

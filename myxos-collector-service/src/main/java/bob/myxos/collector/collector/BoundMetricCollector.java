@@ -83,12 +83,12 @@ public class BoundMetricCollector {
             unknown(snapshot, "shell 未返回输出");
             return;
         }
-        if (!applyAndroidValue(binding.getMetricCode(), output, snapshot)) {
+        if (!applyAndroidValue(binding.getMetricCode(), binding.getAppPackage(), output, snapshot)) {
             unknown(snapshot, "指标输出无法解析");
         }
     }
 
-    private boolean applyAndroidValue(String code, String output, MetricSnapshot snapshot) {
+    private boolean applyAndroidValue(String code, String appPackage, String output, MetricSnapshot snapshot) {
         if (MetricDefinitionRegistry.MEM_TOTAL_KB.equals(code)) {
             return applyLong(parser.parseMemTotalKb(output), snapshot);
         }
@@ -104,6 +104,15 @@ public class BoundMetricCollector {
             Optional<Integer> value = parser.parseTaskTotal(output);
             if (!value.isPresent()) return false;
             snapshot.setMetricNum(BigDecimal.valueOf(value.get())); snapshot.setMetricValue(value.get().toString()); return true;
+        }
+        if (MetricDefinitionRegistry.APP_PROCESS_STATE.equals(code)) {
+            Optional<AndroidMetricParser.AppProcessState> state = parser.parseAppProcessState(output, appPackage);
+            if (!state.isPresent()) return false;
+            snapshot.setMetricValue(state.get().getStatus());
+            snapshot.setMetricNum(null);
+            snapshot.setExtra("{\"shellCode\":0,\"pid\":" + nullableNumber(state.get().getPid())
+                    + ",\"rawState\":" + jsonString(state.get().getRawState()) + "}");
+            return true;
         }
         snapshot.setMetricValue(output.trim());
         return true;
@@ -123,6 +132,7 @@ public class BoundMetricCollector {
         snapshot.setMetricType(binding.getMetricCode());
         snapshot.setTargetType(binding.getTargetType());
         snapshot.setAndroidName(binding.getAndroidName() == null ? "" : binding.getAndroidName());
+        snapshot.setAppPackage(binding.getAppPackage() == null ? "" : binding.getAppPackage());
         snapshot.setCollectedAt(collectedAt);
         return snapshot;
     }
@@ -140,5 +150,13 @@ public class BoundMetricCollector {
 
     private String escape(String value) {
         return value == null ? "未知错误" : value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private String nullableNumber(Integer value) {
+        return value == null ? "null" : value.toString();
+    }
+
+    private String jsonString(String value) {
+        return value == null ? "null" : "\"" + escape(value) + "\"";
     }
 }

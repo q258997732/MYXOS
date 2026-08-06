@@ -23,6 +23,7 @@ public class MetricBinding {
     private String androidName;
     private String targetType;
     private String metricCode;
+    private String appPackage;
     private Integer enabled;
     private Integer intervalSec;
     private LocalDateTime lastCollectedAt;

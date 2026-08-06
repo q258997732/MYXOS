@@ -30,13 +30,15 @@ class MetricSnapshotMapperIntegrationTest {
             statement.execute("DROP TABLE IF EXISTS metric_snapshot");
             statement.execute("CREATE TABLE metric_snapshot ("
                     + "id BIGINT PRIMARY KEY, device_id BIGINT, metric_type VARCHAR(64), metric_code VARCHAR(64), "
-                    + "target_type VARCHAR(32), android_name VARCHAR(128), metric_value VARCHAR(255), "
+                    + "target_type VARCHAR(32), android_name VARCHAR(128), app_package VARCHAR(255), metric_value VARCHAR(255), "
                     + "metric_num DECIMAL(20,4), extra VARCHAR(255), collected_at TIMESTAMP, deleted TINYINT)");
             statement.execute("INSERT INTO metric_snapshot VALUES "
-                    + "(1, 1, 'STATUS', 'ANDROID_STATUS', 'ANDROID_INSTANCE', '实例一', 'STOPPED', NULL, NULL, TIMESTAMP '2026-08-06 10:00:00', 0),"
-                    + "(2, 1, 'STATUS', 'ANDROID_STATUS', 'ANDROID_INSTANCE', '实例一', 'RUNNING', NULL, NULL, TIMESTAMP '2026-08-06 10:01:00', 0),"
-                    + "(3, 1, 'STATUS', 'ANDROID_STATUS', 'ANDROID_INSTANCE', '实例二', 'STOPPED', NULL, NULL, TIMESTAMP '2026-08-06 10:00:30', 0),"
-                    + "(4, 1, 'CPU', 'CPU_USAGE_PERCENT', 'ANDROID_INSTANCE', '实例一', '80', 80, NULL, TIMESTAMP '2026-08-06 10:02:00', 0)");
+                    + "(1, 1, 'STATUS', 'ANDROID_STATUS', 'ANDROID_INSTANCE', '实例一', '', 'STOPPED', NULL, NULL, TIMESTAMP '2026-08-06 10:00:00', 0),"
+                    + "(2, 1, 'STATUS', 'ANDROID_STATUS', 'ANDROID_INSTANCE', '实例一', '', 'RUNNING', NULL, NULL, TIMESTAMP '2026-08-06 10:01:00', 0),"
+                    + "(3, 1, 'STATUS', 'ANDROID_STATUS', 'ANDROID_INSTANCE', '实例二', '', 'STOPPED', NULL, NULL, TIMESTAMP '2026-08-06 10:00:30', 0),"
+                    + "(4, 1, 'CPU', 'CPU_USAGE_PERCENT', 'ANDROID_INSTANCE', '实例一', '', '80', 80, NULL, TIMESTAMP '2026-08-06 10:02:00', 0),"
+                    + "(5, 1, 'APP_PROCESS_STATE', 'APP_PROCESS_STATE', 'ANDROID_INSTANCE', '实例一', 'com.example.one', 'ACTIVE', NULL, NULL, TIMESTAMP '2026-08-06 10:02:30', 0),"
+                    + "(6, 1, 'APP_PROCESS_STATE', 'APP_PROCESS_STATE', 'ANDROID_INSTANCE', '实例一', 'com.example.two', 'STOPPED', NULL, NULL, TIMESTAMP '2026-08-06 10:02:30', 0)");
         }
         Configuration configuration = new Configuration(new Environment("test", new JdbcTransactionFactory(), dataSource));
         configuration.setMapUnderscoreToCamelCase(true);
@@ -50,11 +52,13 @@ class MetricSnapshotMapperIntegrationTest {
             List<MetricSnapshot> snapshots = session.getMapper(MetricSnapshotMapper.class)
                     .selectLatestPerMetricTargetByDevice(1L);
 
-            assertEquals(3, snapshots.size());
+            assertEquals(5, snapshots.size());
             assertEquals(1, snapshots.stream().filter(snapshot -> "ANDROID_STATUS".equals(snapshot.getMetricCode())
                     && "实例一".equals(snapshot.getAndroidName()) && "RUNNING".equals(snapshot.getMetricValue())).count());
             assertEquals(1, snapshots.stream().filter(snapshot -> "ANDROID_STATUS".equals(snapshot.getMetricCode())
                     && "实例二".equals(snapshot.getAndroidName()) && "STOPPED".equals(snapshot.getMetricValue())).count());
+            assertEquals(2, snapshots.stream().filter(snapshot -> "APP_PROCESS_STATE".equals(snapshot.getMetricCode())
+                    && "实例一".equals(snapshot.getAndroidName())).count());
         }
     }
 }

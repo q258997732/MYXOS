@@ -90,7 +90,7 @@ public class ThresholdEvaluator {
         for (RuleCache.RuleWithActions rwa : rules) {
             ThresholdRule rule = rwa.getRule();
             try {
-                if (!matchScope(rule, device, androidName)) {
+                if (!matchScope(rule, device, androidName, snapshot.getAppPackage())) {
                     continue;
                 }
                 if (!isTextRule(rule) && !isValidNumericSnapshot(snapshot)) {
@@ -173,10 +173,19 @@ public class ThresholdEvaluator {
      * @return true 表示命中
      */
     boolean matchScope(ThresholdRule rule, Device device, String androidName) {
+        return matchScope(rule, device, androidName, null);
+    }
+
+    boolean matchScope(ThresholdRule rule, Device device, String androidName, String appPackage) {
         // 实例名过滤：规则指定了目标实例名（逗号分隔可多选）时，仅匹配这些实例的快照
         String scopeAndroidName = rule.getScopeAndroidName();
         if (scopeAndroidName != null && !scopeAndroidName.trim().isEmpty()
                 && !matchAndroidName(scopeAndroidName, androidName)) {
+            return false;
+        }
+        String scopeAppPackage = rule.getScopeAppPackage();
+        if (scopeAppPackage != null && !scopeAppPackage.trim().isEmpty()
+                && !scopeAppPackage.trim().equals(appPackage)) {
             return false;
         }
         String scopeType = rule.getScopeType();
@@ -393,6 +402,14 @@ public class ThresholdEvaluator {
         if (snapshot.getMetricCode() != null && !snapshot.getMetricCode().trim().isEmpty()
                 && snapshot.getTargetType() != null && !snapshot.getTargetType().trim().isEmpty()) {
             String androidName = snapshot.getAndroidName() == null ? "" : snapshot.getAndroidName();
+            String appPackage = snapshot.getAppPackage() == null ? "" : snapshot.getAppPackage();
+            if (!appPackage.isEmpty()) {
+                return startTime != null
+                        ? metricSnapshotMapper.selectRecentByDeviceMetricCodeTargetAndroidAndApp(device.getId(),
+                        snapshot.getMetricCode(), snapshot.getTargetType(), androidName, appPackage, startTime)
+                        : metricSnapshotMapper.selectLatestByDeviceMetricCodeTargetAndroidAndApp(device.getId(),
+                        snapshot.getMetricCode(), snapshot.getTargetType(), androidName, appPackage, limit);
+            }
             return startTime != null
                     ? metricSnapshotMapper.selectRecentByDeviceMetricCodeTargetAndAndroidName(device.getId(),
                     snapshot.getMetricCode(), snapshot.getTargetType(), androidName, startTime)
