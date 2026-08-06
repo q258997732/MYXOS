@@ -7,6 +7,8 @@ import bob.myxos.domain.entity.MetricSnapshot;
 import bob.myxos.domain.entity.OpTask;
 import bob.myxos.domain.entity.MetricBinding;
 import bob.myxos.main.dto.MetricBindingReq;
+import bob.myxos.main.dto.BatchMetricBindingReq;
+import bob.myxos.main.dto.BatchMetricBindingResult;
 import bob.myxos.main.dto.AndroidInstanceVO;
 import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
@@ -193,6 +195,8 @@ public interface DeviceService {
     List<MetricBinding> listMetricBindings(Long id, String androidName);
 
     List<MetricBinding> saveMetricBindings(Long id, String androidName, MetricBindingReq req);
+
+    BatchMetricBindingResult saveMetricBindings(BatchMetricBindingReq req);
 
     MetricBinding resolveEffectiveMetricBinding(Long id, String androidName, String metricCode);
 }

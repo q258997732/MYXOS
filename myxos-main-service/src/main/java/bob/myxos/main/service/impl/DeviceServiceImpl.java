@@ -31,6 +31,8 @@ import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceUpdateReq;
 import bob.myxos.main.dto.MetricBindingReq;
+import bob.myxos.main.dto.BatchMetricBindingReq;
+import bob.myxos.main.dto.BatchMetricBindingResult;
 import bob.myxos.main.metric.MetricDefinitionRegistry;
 import bob.myxos.main.service.DeviceService;
 import bob.myxos.mytos.MytosClient;
@@ -750,6 +752,32 @@ public class DeviceServiceImpl implements DeviceService {
         for (MetricBindingReq.Item item : directItems) saveBinding(id, name, android ? "ANDROID_INSTANCE" : "HOST", item.getMetricCode(), item.getAppPackage(), item.getEnabled(), item.getIntervalSec());
         if (req.getTemplateIds() != null) for (Long templateId : req.getTemplateIds()) applyTemplate(id, name, android ? "ANDROID_INSTANCE" : "HOST", templateId);
         return listMetricBindings(id, name);
+    }
+
+    @Override
+    public BatchMetricBindingResult saveMetricBindings(BatchMetricBindingReq req) {
+        BatchMetricBindingResult result = new BatchMetricBindingResult();
+        for (BatchMetricBindingReq.Target target : req.getTargets()) {
+            BatchMetricBindingResult.TargetResult targetResult = new BatchMetricBindingResult.TargetResult();
+            targetResult.setDeviceId(target.getDeviceId());
+            targetResult.setAndroidName(target.getAndroidName() == null ? "" : target.getAndroidName());
+            try {
+                if (!req.getTargetType().equals("HOST") && !req.getTargetType().equals("ANDROID_INSTANCE")) {
+                    throw new BizException("指标目标类型不合法");
+                }
+                boolean android = "ANDROID_INSTANCE".equals(req.getTargetType());
+                String androidName = target.getAndroidName() == null ? "" : target.getAndroidName();
+                if (android != !androidName.isEmpty()) throw new BizException("批量目标与指标类型不匹配");
+                MetricBindingReq single = new MetricBindingReq();
+                single.setItems(req.getItems());
+                saveMetricBindings(target.getDeviceId(), androidName, single);
+                result.getSucceeded().add(targetResult);
+            } catch (RuntimeException ex) {
+                targetResult.setReason(ex.getMessage());
+                result.getFailed().add(targetResult);
+            }
+        }
+        return result;
     }
 
     private void applyTemplate(Long deviceId, String androidName, String targetType, Long templateId) {

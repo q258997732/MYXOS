@@ -14,6 +14,8 @@ import bob.myxos.main.dto.DeviceOpReq;
 import bob.myxos.main.dto.DeviceUpdateReq;
 import bob.myxos.main.dto.ShellReq;
 import bob.myxos.main.dto.MetricBindingReq;
+import bob.myxos.main.dto.BatchMetricBindingReq;
+import bob.myxos.main.dto.BatchMetricBindingResult;
 import bob.myxos.domain.entity.MetricBinding;
 import bob.myxos.main.service.DeviceService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -304,6 +306,12 @@ public class DeviceController {
     @PreAuthorize("hasRole('ADMIN')")
     public Result<List<MetricBinding>> saveMetricBindings(@PathVariable Long id, @Valid @RequestBody MetricBindingReq req) {
         return Result.ok(deviceService.saveMetricBindings(id, "", req));
+    }
+
+    @PostMapping("/metric-bindings/batch")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<BatchMetricBindingResult> saveBatchMetricBindings(@Valid @RequestBody BatchMetricBindingReq req) {
+        return Result.ok(deviceService.saveMetricBindings(req));
     }
 
     @GetMapping("/{id}/androids/{name}/metric-bindings")
