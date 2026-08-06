@@ -235,7 +235,7 @@ public class ThresholdServiceImpl implements ThresholdService {
         }
         Set<String> codes = bindings.stream().map(MetricBinding::getMetricCode)
                 .filter(code -> code != null && !code.trim().isEmpty()).collect(Collectors.toSet());
-        if (androidNames.isEmpty() || appPackage.isEmpty()) {
+        if (!isSingleAppProcessTarget(scopeType, scopeId, scopeIds, androidNames, appPackage)) {
             codes.remove(MetricDefinitionRegistry.APP_PROCESS_STATE);
         }
         if (codes.isEmpty()) {
@@ -393,6 +393,12 @@ public class ThresholdServiceImpl implements ThresholdService {
             if (values.isEmpty()) {
                 throw new BizException("枚举指标必须选择至少一个选项");
             }
+            Set<String> available = new LinkedHashSet<>(MetricDefinitionRegistry.APP_PROCESS_STATE.equals(catalog.getCode())
+                    ? Arrays.asList("FOREGROUND", "ACTIVE", "RUNNING", "STOPPED")
+                    : collectEnumOptions(catalog.getId()));
+            if (!available.containsAll(values)) {
+                throw new BizException("枚举阈值包含不支持的选项");
+            }
             try {
                 String thresholdText = objectMapper.writeValueAsString(values);
                 req.setThresholdText(thresholdText);
@@ -538,12 +544,9 @@ public class ThresholdServiceImpl implements ThresholdService {
         }
         String appPackage = normalizeScopeAppPackage(req);
         List<String> androidNames = splitAndroidNames(normalizeScopeAndroidName(req));
-        if (appPackage == null || appPackage.isEmpty() || androidNames.isEmpty()) {
-            throw new BizException("应用进程状态指标必须指定安卓实例和应用包名");
-        }
         Set<Long> deviceIds = resolveScopeDeviceIds(req.getScopeType(), req.getScopeId(), req.getScopeIds());
-        if (deviceIds != null && deviceIds.isEmpty()) {
-            throw new BizException("应用进程状态指标在作用范围内未启用");
+        if (!isSingleAppProcessTarget(req.getScopeType(), req.getScopeId(), req.getScopeIds(), androidNames, appPackage)) {
+            throw new BizException("应用进程状态指标仅支持单一设备、安卓实例和应用包名目标");
         }
         LambdaQueryWrapper<MetricBinding> query = new LambdaQueryWrapper<MetricBinding>()
                 .eq(MetricBinding::getMetricCode, catalog.getCode()).eq(MetricBinding::getAppPackage, appPackage)
@@ -567,6 +570,15 @@ public class ThresholdServiceImpl implements ThresholdService {
 
     private String trimToEmpty(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private boolean isSingleAppProcessTarget(String scopeType, Long scopeId, List<Long> scopeIds,
+                                             List<String> androidNames, String appPackage) {
+        if (!"DEVICE".equals(scopeType) || androidNames.size() != 1 || appPackage == null || appPackage.isEmpty()) {
+            return false;
+        }
+        Set<Long> deviceIds = resolveScopeDeviceIds(scopeType, scopeId, scopeIds);
+        return deviceIds != null && deviceIds.size() == 1;
     }
 
     /**

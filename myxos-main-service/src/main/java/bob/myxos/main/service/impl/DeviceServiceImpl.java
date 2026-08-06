@@ -721,14 +721,25 @@ public class DeviceServiceImpl implements DeviceService {
         MytosClient client = clientFactory.create(device.getIp(), device.getPort());
         ShellResp resp = client.shell(device.getIp(), name, command);
         if (resp == null) {
-            return "";
+            throw new BizException("设备 Shell 未返回响应");
+        }
+        if (resp.getCode() == null || resp.getCode() != 200) {
+            String detail = resp.getReason() == null || resp.getReason().trim().isEmpty()
+                    ? resp.getError() : resp.getReason();
+            if (detail == null || detail.trim().isEmpty()) {
+                detail = resp.getMsg();
+            }
+            throw new BizException("设备 Shell 执行失败" + (detail == null || detail.trim().isEmpty() ? "" : ": " + detail));
+        }
+        JsonNode data = resp.getData();
+        if (data != null && data.has("shell_code") && data.path("shell_code").asInt(-1) != 0) {
+            throw new BizException("设备 Shell 执行失败: shell_code=" + data.path("shell_code").asInt());
         }
         // 真实设备将命令输出放在 message/msg 字段，data 仅包含 shell_code
         String msg = resp.getMsg();
         if (msg != null && !msg.isEmpty()) {
             return msg;
         }
-        JsonNode data = resp.getData();
         if (data == null) {
             return "";
         }

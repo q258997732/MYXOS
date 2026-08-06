@@ -19,6 +19,8 @@ import bob.myxos.main.dto.DeviceListResp;
 import bob.myxos.main.dto.DeviceUpdateReq;
 import bob.myxos.main.service.impl.DeviceServiceImpl;
 import bob.myxos.mytos.MytosClientFactory;
+import bob.myxos.mytos.MytosClient;
+import bob.myxos.mytos.dto.ShellResp;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -391,5 +393,25 @@ class DeviceServiceTest {
         deviceService.listLatestMetrics(1L);
 
         verify(metricSnapshotMapper).selectLatestPerMetricTargetByDevice(1L);
+    }
+
+    @Test
+    void executeShellShouldRejectMytosFailureResponse() {
+        Device device = new Device();
+        device.setId(1L);
+        device.setIp("192.168.30.2");
+        device.setPort(9082);
+        device.setDeleted(0);
+        MytosClient client = org.mockito.Mockito.mock(MytosClient.class);
+        ShellResp response = new ShellResp();
+        response.setCode(202);
+        response.setMsg("shell 执行失败");
+        response.setReason("permission denied");
+        when(deviceMapper.selectById(1L)).thenReturn(device);
+        when(mytosClientFactory.create("192.168.30.2", 9082)).thenReturn(client);
+        when(client.shell("192.168.30.2", "android-1", "dumpsys activity processes")).thenReturn(response);
+
+        assertThrows(BizException.class,
+                () -> deviceService.executeShell(1L, "android-1", "dumpsys activity processes"));
     }
 }

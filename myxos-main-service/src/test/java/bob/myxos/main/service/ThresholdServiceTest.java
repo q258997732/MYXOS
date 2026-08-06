@@ -117,6 +117,47 @@ class ThresholdServiceTest {
     }
 
     @Test
+    void 应拒绝多个设备和多个安卓实例的应用进程阈值规则() {
+        MetricCatalogMapper catalogMapper = mock(MetricCatalogMapper.class);
+        MetricBindingMapper bindingMapper = mock(MetricBindingMapper.class);
+        ThresholdRuleMapper ruleMapper = mock(ThresholdRuleMapper.class);
+        ThresholdService service = new ThresholdServiceImpl(ruleMapper, mock(ThresholdActionMapper.class), catalogMapper,
+                mock(MetricTemplateItemMapper.class), bindingMapper, mock(bob.myxos.domain.mapper.DeviceMapper.class),
+                mock(DeviceService.class));
+        when(catalogMapper.selectOne(any())).thenReturn(catalog("APP_PROCESS_STATE", "ENUM", 1));
+        when(bindingMapper.selectOne(any())).thenReturn(
+                binding(7L, "APP_PROCESS_STATE", "android-1", "com.example.app"));
+        ThresholdRuleReq req = rule("APP_PROCESS_STATE", "EQ");
+        req.setScopeType("DEVICE");
+        req.setScopeIds(Arrays.asList(7L, 8L));
+        req.setScopeAndroidName("android-1,android-2");
+        req.setScopeAppPackage("com.example.app");
+        req.setThresholdText("FOREGROUND");
+
+        assertThrows(BizException.class, () -> service.create(req));
+    }
+
+    @Test
+    void 应拒绝手工输入的非法枚举值() {
+        MetricCatalogMapper catalogMapper = mock(MetricCatalogMapper.class);
+        MetricTemplateItemMapper itemMapper = mock(MetricTemplateItemMapper.class);
+        ThresholdService service = new ThresholdServiceImpl(mock(ThresholdRuleMapper.class),
+                mock(ThresholdActionMapper.class), catalogMapper, itemMapper, mock(MetricBindingMapper.class),
+                mock(bob.myxos.domain.mapper.DeviceMapper.class), mock(DeviceService.class));
+        MetricCatalog catalog = catalog("ANDROID_STATUS", "ENUM", 1);
+        catalog.setId(3L);
+        MetricTemplateItem item = new MetricTemplateItem();
+        item.setMetricCatalogId(3L);
+        item.setEnumOptions("[\"RUNNING\",\"STOPPED\"]");
+        when(catalogMapper.selectOne(any())).thenReturn(catalog);
+        when(itemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
+        ThresholdRuleReq req = rule("ANDROID_STATUS", "EQ");
+        req.setThresholdText("INVALID");
+
+        assertThrows(BizException.class, () -> service.create(req));
+    }
+
+    @Test
     void 枚举阈值只能使用模板已验证的选项() {
         MetricCatalogMapper catalogMapper = mock(MetricCatalogMapper.class);
         MetricTemplateItemMapper itemMapper = mock(MetricTemplateItemMapper.class);
@@ -135,10 +176,10 @@ class ThresholdServiceTest {
         when(itemMapper.selectList(any())).thenReturn(Collections.singletonList(item));
 
         ThresholdRuleReq req = rule("ANDROID_STATUS", "IN");
-        req.setThresholdText("INVALID");
+        req.setThresholdText("RUNNING");
 
         ThresholdRule created = service.create(req);
-        assertEquals("[\"INVALID\"]", created.getThresholdText());
+        assertEquals("[\"RUNNING\"]", created.getThresholdText());
     }
 
     @Test
