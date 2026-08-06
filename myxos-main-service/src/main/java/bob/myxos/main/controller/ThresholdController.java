@@ -98,8 +98,11 @@ public class ThresholdController {
     @GetMapping("/metric-candidates")
     public Result<List<MetricCatalog>> metricCandidates(@RequestParam String scopeType,
                                                          @RequestParam(required = false) Long scopeId,
-                                                         @RequestParam(required = false) List<Long> scopeIds) {
-        return Result.ok(thresholdService.listMetricCandidates(scopeType, scopeId, scopeIds));
+                                                         @RequestParam(required = false) List<Long> scopeIds,
+                                                         @RequestParam(required = false) String scopeAndroidName,
+                                                         @RequestParam(required = false) String scopeAppPackage) {
+        return Result.ok(thresholdService.listMetricCandidates(scopeType, scopeId, scopeIds,
+                scopeAndroidName, scopeAppPackage));
     }
 
     @PostMapping("/metric-options/execute")

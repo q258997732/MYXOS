@@ -69,7 +69,8 @@ public interface ThresholdService {
     /** 查询枚举指标可用于阈值的已验证选项。 */
     List<String> listEnumOptions(String metricCode);
 
-    List<MetricCatalog> listMetricCandidates(String scopeType, Long scopeId, List<Long> scopeIds);
+    List<MetricCatalog> listMetricCandidates(String scopeType, Long scopeId, List<Long> scopeIds,
+                                              String scopeAndroidName, String scopeAppPackage);
 
     List<String> executeEnumOptions(ThresholdMetricOptionExecuteReq req);
 

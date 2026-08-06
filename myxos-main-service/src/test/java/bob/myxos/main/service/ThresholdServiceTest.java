@@ -47,7 +47,8 @@ class ThresholdServiceTest {
                 binding(11L, "ANDROID_MODEL", "", "")));
         when(catalogMapper.selectList(any())).thenReturn(Collections.singletonList(available));
 
-        List<MetricCatalog> candidates = service.listMetricCandidates("DEVICE", null, Collections.singletonList(10L));
+        List<MetricCatalog> candidates = service.listMetricCandidates("DEVICE", null, Collections.singletonList(10L),
+                "android-1", "com.example.app");
 
         assertEquals(Collections.singletonList("CPU_USAGE_PERCENT"), codes(candidates));
         verify(catalogMapper).selectList(org.mockito.ArgumentMatchers.argThat(query ->
@@ -55,7 +56,7 @@ class ThresholdServiceTest {
     }
 
     @Test
-    void 执行枚举选项必须使用受控命令并匹配应用进程绑定() {
+    void 执行枚举选项必须使用受控命令并返回本次解析出的应用进程状态() {
         MetricCatalogMapper catalogMapper = mock(MetricCatalogMapper.class);
         MetricBindingMapper bindingMapper = mock(MetricBindingMapper.class);
         DeviceService deviceService = mock(DeviceService.class);
@@ -66,14 +67,53 @@ class ThresholdServiceTest {
         when(bindingMapper.selectOne(any())).thenReturn(
                 binding(7L, "APP_PROCESS_STATE", "android-1", "com.example.app"));
         when(deviceService.executeShell(7L, "android-1", "dumpsys activity processes"))
-                .thenReturn("ProcessRecord{123 com.example.app/1000}");
+                .thenReturn("*APP* UID u0a1 ProcessRecord{123:com.example.app/u0}\n  curProcState=2");
         ThresholdMetricOptionExecuteReq req = new ThresholdMetricOptionExecuteReq();
         req.setDeviceId(7L);
         req.setAndroidName("android-1");
         req.setMetricCode("APP_PROCESS_STATE");
         req.setAppPackage("com.example.app");
 
-        assertEquals(Arrays.asList("FOREGROUND", "ACTIVE", "RUNNING", "STOPPED"), service.executeEnumOptions(req));
+        assertEquals(Collections.singletonList("FOREGROUND"), service.executeEnumOptions(req));
+    }
+
+    @Test
+    void 执行枚举选项在受控命令无输出时返回目标业务错误() {
+        MetricCatalogMapper catalogMapper = mock(MetricCatalogMapper.class);
+        MetricBindingMapper bindingMapper = mock(MetricBindingMapper.class);
+        DeviceService deviceService = mock(DeviceService.class);
+        ThresholdService service = new ThresholdServiceImpl(mock(ThresholdRuleMapper.class),
+                mock(ThresholdActionMapper.class), catalogMapper, mock(MetricTemplateItemMapper.class), bindingMapper,
+                mock(bob.myxos.domain.mapper.DeviceMapper.class), deviceService);
+        when(catalogMapper.selectOne(any())).thenReturn(catalog("APP_PROCESS_STATE", "ENUM", 1));
+        when(bindingMapper.selectOne(any())).thenReturn(
+                binding(7L, "APP_PROCESS_STATE", "android-1", "com.example.app"));
+        when(deviceService.executeShell(7L, "android-1", "dumpsys activity processes")).thenReturn("  ");
+        ThresholdMetricOptionExecuteReq req = new ThresholdMetricOptionExecuteReq();
+        req.setDeviceId(7L);
+        req.setAndroidName("android-1");
+        req.setMetricCode("APP_PROCESS_STATE");
+        req.setAppPackage("com.example.app");
+
+        assertThrows(BizException.class, () -> service.executeEnumOptions(req));
+    }
+
+    @Test
+    void 应拒绝没有同一设备实例和应用包绑定的应用进程阈值规则() {
+        MetricCatalogMapper catalogMapper = mock(MetricCatalogMapper.class);
+        MetricBindingMapper bindingMapper = mock(MetricBindingMapper.class);
+        ThresholdService service = new ThresholdServiceImpl(mock(ThresholdRuleMapper.class),
+                mock(ThresholdActionMapper.class), catalogMapper, mock(MetricTemplateItemMapper.class), bindingMapper,
+                mock(bob.myxos.domain.mapper.DeviceMapper.class), mock(DeviceService.class));
+        when(catalogMapper.selectOne(any())).thenReturn(catalog("APP_PROCESS_STATE", "ENUM", 1));
+        ThresholdRuleReq req = rule("APP_PROCESS_STATE", "EQ");
+        req.setScopeType("DEVICE");
+        req.setScopeId(7L);
+        req.setScopeAndroidName("android-1");
+        req.setScopeAppPackage("com.example.app");
+        req.setThresholdText("FOREGROUND");
+
+        assertThrows(BizException.class, () -> service.create(req));
     }
 
     @Test

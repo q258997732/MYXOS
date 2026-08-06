@@ -19,6 +19,7 @@ import bob.myxos.main.dto.ThresholdRuleReq;
 import bob.myxos.main.dto.ThresholdMetricOptionExecuteReq;
 import bob.myxos.main.metric.MetricDefinitionRegistry;
 import bob.myxos.main.metric.MetricDefinition;
+import bob.myxos.main.metric.AndroidMetricParser;
 import bob.myxos.main.service.DeviceService;
 import bob.myxos.main.service.ThresholdService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -55,11 +56,14 @@ public class ThresholdServiceImpl implements ThresholdService {
     private final DeviceMapper deviceMapper;
     private final DeviceService deviceService;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final AndroidMetricParser androidMetricParser = new AndroidMetricParser();
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ThresholdRule create(ThresholdRuleReq req) {
-        normalizeCondition(req, resolveCatalog(req));
+        MetricCatalog catalog = resolveCatalog(req);
+        normalizeCondition(req, catalog);
+        validateAppProcessBinding(req, catalog);
         ThresholdRule rule = new ThresholdRule();
         rule.setName(req.getName());
         rule.setMetricType(resolveMetricType(req));
@@ -87,7 +91,9 @@ public class ThresholdServiceImpl implements ThresholdService {
     @Transactional(rollbackFor = Exception.class)
     public ThresholdRule update(Long id, ThresholdRuleReq req) {
         ThresholdRule existing = requireRule(id);
-        normalizeCondition(req, resolveCatalog(req));
+        MetricCatalog catalog = resolveCatalog(req);
+        normalizeCondition(req, catalog);
+        validateAppProcessBinding(req, catalog);
         boolean durationMode = "DURATION".equals(req.getTriggerMode());
         boolean consecutiveMode = "CONSECUTIVE".equals(req.getTriggerMode());
 
@@ -204,7 +210,8 @@ public class ThresholdServiceImpl implements ThresholdService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<MetricCatalog> listMetricCandidates(String scopeType, Long scopeId, List<Long> scopeIds) {
+    public List<MetricCatalog> listMetricCandidates(String scopeType, Long scopeId, List<Long> scopeIds,
+                                                     String scopeAndroidName, String scopeAppPackage) {
         Set<Long> deviceIds = resolveScopeDeviceIds(scopeType, scopeId, scopeIds);
         if (deviceIds != null && deviceIds.isEmpty()) {
             return Collections.emptyList();
@@ -214,12 +221,23 @@ public class ThresholdServiceImpl implements ThresholdService {
         if (deviceIds != null) {
             bindingQuery.in(MetricBinding::getDeviceId, deviceIds);
         }
+        List<String> androidNames = splitAndroidNames(scopeAndroidName);
+        if (!androidNames.isEmpty()) {
+            bindingQuery.in(MetricBinding::getAndroidName, androidNames);
+        }
+        String appPackage = trimToEmpty(scopeAppPackage);
+        if (!appPackage.isEmpty()) {
+            bindingQuery.eq(MetricBinding::getAppPackage, appPackage);
+        }
         List<MetricBinding> bindings = bindingMapper.selectList(bindingQuery);
         if (bindings == null || bindings.isEmpty()) {
             return Collections.emptyList();
         }
         Set<String> codes = bindings.stream().map(MetricBinding::getMetricCode)
                 .filter(code -> code != null && !code.trim().isEmpty()).collect(Collectors.toSet());
+        if (androidNames.isEmpty() || appPackage.isEmpty()) {
+            codes.remove(MetricDefinitionRegistry.APP_PROCESS_STATE);
+        }
         if (codes.isEmpty()) {
             return Collections.emptyList();
         }
@@ -249,8 +267,20 @@ public class ThresholdServiceImpl implements ThresholdService {
         if (binding == null) {
             throw new BizException("指标未在指定设备、安卓实例和应用包名上启用");
         }
-        deviceService.executeShell(req.getDeviceId(), androidName, command);
-        return listEnumOptions(catalog.getCode());
+        String output;
+        try {
+            output = deviceService.executeShell(req.getDeviceId(), androidName, command);
+        } catch (RuntimeException e) {
+            throw new BizException("受控指标命令执行失败");
+        }
+        if (output == null || output.trim().isEmpty()) {
+            throw new BizException("受控指标命令未返回有效输出");
+        }
+        if (MetricDefinitionRegistry.APP_PROCESS_STATE.equals(catalog.getCode())) {
+            return Collections.singletonList(androidMetricParser.parseAppProcessState(output, appPackage)
+                    .orElseThrow(() -> new BizException("应用进程状态输出无法解析")).getStatus());
+        }
+        throw new BizException("该枚举指标不支持受控即时读取");
     }
 
     @Override
@@ -500,6 +530,43 @@ public class ThresholdServiceImpl implements ThresholdService {
             return devices.stream().map(Device::getId).filter(id -> id != null).collect(Collectors.toSet());
         }
         throw new BizException("作用范围类型不合法");
+    }
+
+    private void validateAppProcessBinding(ThresholdRuleReq req, MetricCatalog catalog) {
+        if (catalog == null || !MetricDefinitionRegistry.APP_PROCESS_STATE.equals(catalog.getCode())) {
+            return;
+        }
+        String appPackage = normalizeScopeAppPackage(req);
+        List<String> androidNames = splitAndroidNames(normalizeScopeAndroidName(req));
+        if (appPackage == null || appPackage.isEmpty() || androidNames.isEmpty()) {
+            throw new BizException("应用进程状态指标必须指定安卓实例和应用包名");
+        }
+        Set<Long> deviceIds = resolveScopeDeviceIds(req.getScopeType(), req.getScopeId(), req.getScopeIds());
+        if (deviceIds != null && deviceIds.isEmpty()) {
+            throw new BizException("应用进程状态指标在作用范围内未启用");
+        }
+        LambdaQueryWrapper<MetricBinding> query = new LambdaQueryWrapper<MetricBinding>()
+                .eq(MetricBinding::getMetricCode, catalog.getCode()).eq(MetricBinding::getAppPackage, appPackage)
+                .in(MetricBinding::getAndroidName, androidNames).eq(MetricBinding::getEnabled, 1)
+                .eq(MetricBinding::getDeleted, 0);
+        if (deviceIds != null) {
+            query.in(MetricBinding::getDeviceId, deviceIds);
+        }
+        if (bindingMapper.selectOne(query) == null) {
+            throw new BizException("应用进程状态指标未在作用范围、安卓实例和应用包名上启用");
+        }
+    }
+
+    private List<String> splitAndroidNames(String names) {
+        if (names == null || names.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(names.split(",")).map(String::trim).filter(name -> !name.isEmpty())
+                .distinct().collect(Collectors.toList());
+    }
+
+    private String trimToEmpty(String value) {
+        return value == null ? "" : value.trim();
     }
 
     /**
