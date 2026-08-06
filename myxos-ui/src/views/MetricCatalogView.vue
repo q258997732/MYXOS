@@ -22,6 +22,9 @@
         <el-table-column label="阈值支持" width="120">
           <template #default="{ row }"><el-tag :type="row.thresholdEnabled === 1 ? 'success' : 'info'" size="small">{{ row.thresholdEnabled === 1 ? '支持' : '不支持' }}</el-tag></template>
         </el-table-column>
+        <el-table-column label="验证状态" width="120">
+          <template #default><el-tag type="success" size="small">{{ verificationLabel() }}</el-tag></template>
+        </el-table-column>
         <el-table-column label="建议频率" width="120">60 秒</el-table-column>
       </el-table>
     </div>
@@ -31,6 +34,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { metricCatalogApi } from '@/api'
+import { verificationLabel } from '@/utils/metric-catalog'
 
 const targetType = ref('HOST')
 const catalogs = ref([])

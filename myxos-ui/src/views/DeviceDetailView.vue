@@ -162,6 +162,27 @@
         </el-card>
       </el-tab-pane>
 
+      <el-tab-pane label="指标绑定" name="metric-bindings">
+        <h4 class="metric-section-title">主机直接绑定</h4>
+        <el-table :data="hostBindings" size="small" stripe>
+          <el-table-column prop="metricCode" label="指标" min-width="180" />
+          <el-table-column label="启用" width="100"><template #default="{ row }"><el-switch :model-value="row.enabled === 1" @change="value => saveHostBinding(row, value)" /></template></el-table-column>
+          <el-table-column label="频率（秒）" width="180"><template #default="{ row }"><el-input-number v-model="row.intervalSec" :min="15" :max="86400" @change="saveHostBinding(row, row.enabled === 1)" /></template></el-table-column>
+        </el-table>
+        <el-divider />
+        <el-select v-model="bindingInstanceName" placeholder="选择安卓实例" filterable style="width: 280px" @change="loadAndroidBindings">
+          <el-option v-for="item in androids" :key="item.name" :label="item.name" :value="item.name" />
+        </el-select>
+        <el-alert v-if="bindingInstanceName" :type="selectedAndroidStatus === 'RUNNING' ? 'success' : 'warning'" :closable="false" show-icon :title="collectionStatusLabel(selectedAndroidStatus)" style="margin: 12px 0" />
+        <el-table v-if="bindingInstanceName" :data="instanceBindingRows" size="small" stripe>
+          <el-table-column prop="metricCode" label="指标" min-width="170" />
+          <el-table-column label="继承绑定" min-width="140"><template #default="{ row }">{{ bindingText(row.inherited) }}</template></el-table-column>
+          <el-table-column label="直接绑定" min-width="140"><template #default="{ row }">{{ bindingText(row.direct) }}</template></el-table-column>
+          <el-table-column label="最终有效" min-width="140"><template #default="{ row }">{{ bindingText(row.effective) }}</template></el-table-column>
+          <el-table-column label="操作" width="180"><template #default="{ row }"><el-button size="small" @click="overrideAndroidBinding(row)">{{ row.direct ? '更新覆盖' : '创建覆盖' }}</el-button><el-button v-if="row.direct" size="small" @click="toggleAndroidBinding(row)">{{ row.direct.enabled === 1 ? '停用' : '启用' }}</el-button></template></el-table-column>
+        </el-table>
+      </el-tab-pane>
+
       <el-tab-pane label="最近告警" name="alarms">
         <el-table :data="alarms" size="small" stripe>
           <el-table-column prop="ruleName" label="规则" />
@@ -285,11 +306,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Cellphone, Picture, MapLocation, InfoFilled, CopyDocument } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
-import { deviceApi, authApi } from '@/api'
+import { deviceApi, authApi, metricBindingApi } from '@/api'
 import { useUserStore } from '@/store'
 import DeviceStatusTag from '@/components/DeviceStatusTag.vue'
 import { formatDateTime } from '@/utils/date'
 import { metricLabel } from '@/utils/metric'
+import { buildInstanceBindingRows, collectionStatusLabel } from '@/utils/metric-binding'
 
 const route = useRoute()
 const router = useRouter()
@@ -302,6 +324,9 @@ const latestMetrics = reactive([])
 const alarms = reactive([])
 const logs = reactive([])
 const tasks = reactive([])
+const hostBindings = reactive([])
+const androidBindings = reactive([])
+const bindingInstanceName = ref('')
 
 const androidLoading = ref(false)
 const metricsLoading = ref(false)
@@ -414,6 +439,45 @@ const hostMetrics = computed(() => {
     return true
   })
 })
+
+const selectedAndroidStatus = computed(() => (androids.find(item => item.name === bindingInstanceName.value) || {}).status || 'UNKNOWN')
+const instanceBindingRows = computed(() => buildInstanceBindingRows(hostBindings, androidBindings))
+
+function bindingText(binding) {
+  if (!binding) return '-'
+  return `${binding.enabled === 1 ? '启用' : '停用'} / ${binding.intervalSec || '-'} 秒`
+}
+
+async function loadBindingData() {
+  const response = await metricBindingApi.listHost(deviceId)
+  hostBindings.splice(0, hostBindings.length, ...(response.data || []))
+}
+
+async function loadAndroidBindings() {
+  androidBindings.splice(0, androidBindings.length)
+  if (!bindingInstanceName.value) return
+  const response = await metricBindingApi.listAndroid(deviceId, bindingInstanceName.value)
+  androidBindings.push(...(response.data || []))
+}
+
+async function saveHostBinding(binding, enabled) {
+  await metricBindingApi.saveHost(deviceId, { items: [{ metricCode: binding.metricCode, enabled: enabled ? 1 : 0, intervalSec: binding.intervalSec }] })
+  await loadBindingData()
+}
+
+async function saveAndroidBinding(binding, enabled) {
+  await metricBindingApi.saveAndroid(deviceId, bindingInstanceName.value, { items: [{ metricCode: binding.metricCode, enabled: enabled ? 1 : 0, intervalSec: binding.intervalSec }] })
+  await loadAndroidBindings()
+}
+
+async function overrideAndroidBinding(row) {
+  const source = row.direct || row.effective
+  await saveAndroidBinding({ metricCode: row.metricCode, enabled: source.enabled, intervalSec: source.intervalSec }, source.enabled === 1)
+}
+
+async function toggleAndroidBinding(row) {
+  await saveAndroidBinding(row.direct, row.direct.enabled !== 1)
+}
 
 function formatMetricValue(item) {
   // 主机在线/离线为状态类指标，1/0 转换为中文文本展示
@@ -820,6 +884,7 @@ onMounted(() => {
   loadAlarms()
   loadLogs()
   loadTasks()
+  loadBindingData()
   startRefresh()
 })
 

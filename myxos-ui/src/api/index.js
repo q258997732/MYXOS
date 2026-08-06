@@ -41,7 +41,8 @@ export const thresholdApi = {
   detail: (id) => request.get(`/thresholds/${id}`),
   update: (id, data) => request.put(`/thresholds/${id}`, data),
   delete: (id) => request.delete(`/thresholds/${id}`),
-  toggle: (id, enabled) => request.post(`/thresholds/${id}/toggle`, { enabled })
+  toggle: (id, enabled) => request.post(`/thresholds/${id}/toggle`, { enabled }),
+  metricOptions: (metricCode) => request.get('/thresholds/metric-options', { params: { metricCode } })
 }
 
 export const alarmApi = {

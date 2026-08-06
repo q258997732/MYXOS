@@ -35,3 +35,12 @@
 按上述 `top` 前缀计算，CPU 使用率为 `8.00%`；任务总数为 `99`。
 
 本记录仅覆盖授权的只读诊断命令，不包含任何状态修改命令，也不保存截图或设备敏感内容。
+
+## 复验记录（2026-08-06）
+
+- 使用同一 API 地址、目标主机和安卓实例复验全部 5 条受控只读命令。
+- 每条命令均返回 HTTP `200` 与 `shell_code=0`。
+- `getprop ro.build.version.release` 返回 `12`；`getprop ro.product.model` 仍返回 `2410DPN6CC`。
+- `/proc/meminfo` 返回 `MemTotal: 12572420 kB`、`MemAvailable: 4285780 kB`。
+- `top -b -n 1` 返回 `Tasks: 97 total` 和 `800%cpu ... 676%idle`，解析器计算 CPU 使用率为 `15.50%`。
+- `dumpsys activity recents` 返回最近任务列表；输出仅用于验证解析兼容性，未归档完整内容。

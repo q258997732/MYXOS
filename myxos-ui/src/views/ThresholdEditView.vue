@@ -10,51 +10,20 @@
         </el-form-item>
 
         <el-form-item label="指标类型" required>
-          <el-select v-model="form.metricType" style="width: 100%">
-            <el-option-group label="性能指标">
-              <el-option v-for="t in numericMetricTypes" :key="t.value" :label="t.label" :value="t.value" />
-            </el-option-group>
-            <el-option-group label="状态指标">
-              <el-option v-for="t in statusMetricTypes" :key="t.value" :label="t.label" :value="t.value" />
-            </el-option-group>
+          <el-select v-model="form.metricCode" style="width: 100%" @change="onMetricChange">
+            <el-option v-for="item in metricCatalogs" :key="item.code" :label="item.name" :value="item.code" />
           </el-select>
         </el-form-item>
 
         <el-form-item label="触发条件" required>
-          <!-- 状态类指标：可无需条件（检测到即触发），也可按数值判断 -->
-          <div v-if="isStateMetric" class="condition-block">
-            <el-radio-group v-model="form.conditionType">
-              <el-radio-button label="NONE">无需条件（检测到即触发）</el-radio-button>
-              <el-radio-button label="NUMERIC">数值判断</el-radio-button>
-            </el-radio-group>
-            <div v-if="form.conditionType === 'NUMERIC'" class="condition-row condition-sub-row">
-              <el-select v-model="form.compareOp" style="width: 120px">
-                <el-option label="大于" value="GT" />
-                <el-option label="大于等于" value="GTE" />
-                <el-option label="小于" value="LT" />
-                <el-option label="小于等于" value="LTE" />
-                <el-option label="等于" value="EQ" />
-                <el-option label="不等于" value="NE" />
-              </el-select>
-              <el-input-number v-model="form.thresholdValue" :precision="2" style="flex: 1; margin-left: 8px" />
-              <span class="unit-text">{{ metricUnit(form.metricType) }}</span>
-            </div>
-            <div v-else class="hint-text condition-sub-row">检测到「{{ metricLabel(form.metricType) }}」对应状态即触发，状态恢复后告警自动解除</div>
+          <div v-if="selectedValueType === 'ENUM'" class="condition-row">
+            <el-select v-model="form.compareOp" style="width: 120px"><el-option label="属于" value="IN" /><el-option label="不属于" value="NOT_IN" /></el-select>
+            <el-select v-model="form.thresholdOptions" multiple placeholder="选择已验证枚举值" style="flex: 1; margin-left: 8px"><el-option v-for="option in enumOptions" :key="option" :label="option" :value="option" /></el-select>
           </div>
-          <!-- 字符类指标：按字符串比较 -->
-          <div v-else-if="isStringMetric" class="condition-row">
-            <el-select v-model="form.compareOp" style="width: 120px">
-              <el-option label="等于" value="EQ" />
-              <el-option label="不等于" value="NE" />
-              <el-option label="包含" value="CONTAINS" />
-            </el-select>
-            <el-select v-if="form.metricType === 'ANDROID_STATUS'" v-model="form.thresholdText"
-              placeholder="目标状态" style="width: 240px; margin-left: 8px">
-              <el-option v-for="s in androidStatusOptions" :key="s.value" :label="s.label" :value="s.value" />
-            </el-select>
-            <el-input v-else v-model="form.thresholdText" placeholder="目标文本，如 STOPPED" maxlength="255" style="flex: 1; margin-left: 8px" />
+          <div v-else-if="selectedValueType === 'STRING'" class="condition-row">
+            <el-select v-model="form.compareOp" style="width: 120px"><el-option label="等于" value="EQ" /><el-option label="不等于" value="NE" /><el-option label="包含" value="CONTAINS" /></el-select>
+            <el-input v-model="form.thresholdText" placeholder="目标文本" maxlength="255" style="flex: 1; margin-left: 8px" />
           </div>
-          <!-- 数值指标：按数值比较 -->
           <div v-else class="condition-row">
             <el-select v-model="form.compareOp" style="width: 120px">
               <el-option label="大于" value="GT" />
@@ -209,13 +178,16 @@ import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, QuestionFilled } from '@element-plus/icons-vue'
-import { thresholdApi, deviceApi, deviceGroupApi } from '@/api'
+import { thresholdApi, deviceApi, deviceGroupApi, metricCatalogApi } from '@/api'
+import { toThresholdForm } from '@/utils/threshold-form'
 
 const route = useRoute()
 const router = useRouter()
 const isEdit = computed(() => !!route.params.id)
 const loading = ref(false)
 const saving = ref(false)
+const metricCatalogs = ref([])
+const enumOptions = ref([])
 
 const numericMetricTypes = [
   { value: 'CPU', label: 'CPU 使用率' },
@@ -325,10 +297,12 @@ const paramPlaceholder = (operationCode) => {
 const form = reactive({
   name: '',
   metricType: 'CPU',
+  metricCode: '',
   conditionType: 'NUMERIC',
   compareOp: 'GT',
   thresholdValue: 80,
   thresholdText: '',
+  thresholdOptions: [],
   triggerMode: 'DURATION',
   durationSec: 60,
   consecutiveCount: 2,
@@ -338,6 +312,29 @@ const form = reactive({
   scopeAndroidNames: [],
   actions: []
 })
+
+const selectedCatalog = computed(() => metricCatalogs.value.find(item => item.code === form.metricCode))
+const selectedValueType = computed(() => (selectedCatalog.value || {}).valueType || 'NUMBER')
+
+const loadMetricCatalogs = async () => {
+  const [host, android] = await Promise.all([metricCatalogApi.list({ targetType: 'HOST' }), metricCatalogApi.list({ targetType: 'ANDROID_INSTANCE' })])
+  metricCatalogs.value = [...(host.data || []), ...(android.data || [])].filter(item => item.thresholdEnabled === 1)
+}
+
+const loadEnumOptions = async () => {
+  enumOptions.value = []
+  if (selectedValueType.value !== 'ENUM') return
+  const res = await thresholdApi.metricOptions(form.metricCode)
+  enumOptions.value = res.data || []
+}
+
+const onMetricChange = async () => {
+  const valueType = selectedValueType.value
+  form.conditionType = valueType === 'ENUM' ? 'ENUM' : (valueType === 'STRING' ? 'STRING' : 'NUMERIC')
+  form.compareOp = valueType === 'ENUM' ? 'IN' : 'GT'
+  form.thresholdOptions = []
+  await loadEnumOptions()
+}
 
 /** 实例名称多选的数据源：作用范围内主机采集到过的安卓实例名 */
 const androidNameOptions = ref([])
@@ -459,18 +456,21 @@ const loadDetail = async () => {
     Object.assign(form, {
       name: rule.name || '',
       metricType: rule.metricType || 'CPU',
+      metricCode: toThresholdForm(rule).metricCode,
       conditionType: rule.conditionType || 'NUMERIC',
       compareOp: rule.compareOp || 'GT',
       thresholdValue: rule.thresholdValue != null ? Number(rule.thresholdValue) : 80,
       thresholdText: rule.thresholdText || '',
       triggerMode: rule.triggerMode || 'DURATION',
-      durationSec: rule.durationSec || 60,
+      durationSec: toThresholdForm(rule).durationSec,
+      thresholdOptions: toThresholdForm(rule).thresholdOptions,
       consecutiveCount: rule.consecutiveCount || 2,
       scopeType: rule.scopeType || 'ALL',
       scopeId: rule.scopeId || null,
       scopeIds: parseScopeIds(rule),
       scopeAndroidNames: parseScopeAndroidNames(rule)
     })
+    await loadEnumOptions()
     form.actions.splice(0, form.actions.length)
     const actions = data.actions || []
     if (actions.length > 0) {
@@ -526,10 +526,12 @@ const save = async () => {
     const payload = {
       name: form.name,
       metricType: form.metricType,
+      metricCode: form.metricCode,
       conditionType: form.conditionType,
       compareOp: form.conditionType === 'NONE' ? null : form.compareOp,
       thresholdValue: form.conditionType === 'NUMERIC' ? form.thresholdValue : null,
       thresholdText: form.conditionType === 'STRING' ? form.thresholdText.trim() : null,
+      thresholdOptions: selectedValueType.value === 'ENUM' ? JSON.stringify(form.thresholdOptions) : null,
       triggerMode: form.triggerMode,
       durationSec: form.durationSec,
       consecutiveCount: form.consecutiveCount,
@@ -554,11 +556,10 @@ const save = async () => {
   }
 }
 
-onMounted(() => {
-  loadGroups()
-  loadDevices()
+onMounted(async () => {
+  await Promise.all([loadGroups(), loadDevices(), loadMetricCatalogs()])
   if (isEdit.value) {
-    loadDetail()
+    await loadDetail()
   } else {
     if (form.actions.length === 0) addAction()
   }

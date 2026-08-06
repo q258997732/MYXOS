@@ -38,7 +38,8 @@
           <el-input v-model="editForm.configKey" disabled />
         </el-form-item>
         <el-form-item label="配置值">
-          <el-input v-model="editForm.configValue" placeholder="请输入新的配置值" />
+          <el-input-number v-if="editForm.configKey === 'metric.retention.days'" v-model="metricRetentionDays" :min="1" :max="3650" style="width: 100%" />
+          <el-input v-else v-model="editForm.configValue" placeholder="请输入新的配置值" />
         </el-form-item>
         <el-form-item label="说明">
           <el-input v-model="editForm.description" type="textarea" :rows="2" disabled />
@@ -63,6 +64,7 @@ const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
 const editForm = reactive({ configKey: '', configValue: '', description: '' })
+const metricRetentionDays = ref(30)
 
 async function load() {
   loading.value = true
@@ -78,13 +80,15 @@ function edit(row) {
   editForm.configKey = row.configKey
   editForm.configValue = row.configValue
   editForm.description = row.description || ''
+  metricRetentionDays.value = Number(row.configValue) || 30
   dialogVisible.value = true
 }
 
 async function save() {
   saving.value = true
   try {
-    await sysConfigApi.update(editForm.configKey, editForm.configValue)
+    const value = editForm.configKey === 'metric.retention.days' ? String(metricRetentionDays.value) : editForm.configValue
+    await sysConfigApi.update(editForm.configKey, value)
     ElMessage.success('保存成功')
     dialogVisible.value = false
     load()
