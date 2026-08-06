@@ -27,6 +27,7 @@ public class MetricCatalog {
     private String unit;
     private String commandKey;
     private Integer thresholdEnabled;
+    private Integer defaultIntervalSec;
 
     @TableField(fill = FieldFill.INSERT)
     private String whoCreated;

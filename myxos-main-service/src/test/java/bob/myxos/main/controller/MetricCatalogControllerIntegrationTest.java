@@ -2,7 +2,7 @@ package bob.myxos.main.controller;
 
 import bob.myxos.main.config.SecurityConfig;
 import bob.myxos.main.config.TestSecurityConfig;
-import bob.myxos.main.service.MetricTemplateService;
+import bob.myxos.main.service.MetricCatalogService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ContextConfiguration(classes = {SecurityConfig.class, TestSecurityConfig.class, MetricCatalogController.class})
 class MetricCatalogControllerIntegrationTest {
     @Autowired private MockMvc mockMvc;
-    @MockBean private MetricTemplateService metricTemplateService;
+    @MockBean private MetricCatalogService metricCatalogService;
 
     @Test
     @WithMockUser(username = "viewer", roles = "VIEWER")
