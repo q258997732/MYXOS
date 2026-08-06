@@ -74,6 +74,25 @@ export const sysConfigApi = {
   update: (key, value) => request.put(`/sys-config/${key}`, { value })
 }
 
+export const metricCatalogApi = {
+  list: (params) => request.get('/metric-catalogs', { params })
+}
+
+export const metricTemplateApi = {
+  list: () => request.get('/metric-templates'),
+  detail: (id) => request.get(`/metric-templates/${id}`),
+  create: (data) => request.post('/metric-templates', data),
+  update: (id, data) => request.put(`/metric-templates/${id}`, data),
+  delete: (id) => request.delete(`/metric-templates/${id}`)
+}
+
+export const metricBindingApi = {
+  listHost: (deviceId) => request.get(`/devices/${deviceId}/metric-bindings`),
+  saveHost: (deviceId, data) => request.put(`/devices/${deviceId}/metric-bindings`, data),
+  listAndroid: (deviceId, androidName) => request.get(`/devices/${deviceId}/androids/${encodeURIComponent(androidName)}/metric-bindings`),
+  saveAndroid: (deviceId, androidName, data) => request.put(`/devices/${deviceId}/androids/${encodeURIComponent(androidName)}/metric-bindings`, data)
+}
+
 export const userApi = {
   list: (params) => request.get('/users', { params }),
   create: (data) => request.post('/users', data),

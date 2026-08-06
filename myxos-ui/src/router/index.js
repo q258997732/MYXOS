@@ -28,7 +28,11 @@ const routes = [
       { path: 'logs', name: 'LogList', component: () => import('@/views/LogListView.vue') },
       { path: 'op-tasks', name: 'OpTaskList', component: () => import('@/views/OpTaskListView.vue') },
       { path: 'settings', name: 'Settings', component: () => import('@/views/SettingsView.vue') },
-      { path: 'users', name: 'UserList', component: () => import('@/views/UserListView.vue') }
+      { path: 'users', name: 'UserList', component: () => import('@/views/UserListView.vue') },
+      { path: 'metric-catalogs', name: 'MetricCatalog', component: () => import('@/views/MetricCatalogView.vue'), meta: { admin: true } },
+      { path: 'metric-templates', name: 'MetricTemplateList', component: () => import('@/views/MetricTemplateListView.vue'), meta: { admin: true } },
+      { path: 'metric-templates/create', name: 'MetricTemplateCreate', component: () => import('@/views/MetricTemplateEditView.vue'), meta: { admin: true } },
+      { path: 'metric-templates/:id/edit', name: 'MetricTemplateEdit', component: () => import('@/views/MetricTemplateEditView.vue'), meta: { admin: true } }
     ]
   }
 ]
@@ -42,6 +46,8 @@ router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
   if (!to.meta.public && !userStore.token) {
     next('/login')
+  } else if (to.matched.some(record => record.meta.admin) && !userStore.isAdmin) {
+    next('/dashboard')
   } else {
     next()
   }
