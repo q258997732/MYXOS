@@ -27,6 +27,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.support.AbstractPlatformTransactionManager;
 import org.springframework.transaction.support.DefaultTransactionStatus;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -99,6 +102,51 @@ class BatchMetricBindingServiceTest {
         assertEquals(1, persisted.size());
         assertEquals(Long.valueOf(2L), persisted.get(0).getDeviceId());
         assertEquals(TransactionDefinition.PROPAGATION_REQUIRES_NEW, transactionManager.getPropagationBehavior());
+    }
+
+    @Test
+    void 真实数据库中失败目标不应留下部分绑定且其他目标应提交() {
+        DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                "jdbc:h2:mem:batch_metric_binding;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        jdbcTemplate.execute("DROP TABLE IF EXISTS metric_binding");
+        jdbcTemplate.execute("CREATE TABLE metric_binding (device_id BIGINT, android_name VARCHAR(128), metric_code VARCHAR(64), app_package VARCHAR(255))");
+        DataSourceTransactionManager transactionManager = new DataSourceTransactionManager(dataSource);
+        Device device = new Device();
+        device.setDeleted(0);
+        when(deviceMapper.selectById(any(Long.class))).thenReturn(device);
+        MetricCatalog catalog = new MetricCatalog();
+        catalog.setTargetType("ANDROID_INSTANCE");
+        when(metricCatalogMapper.selectOne(any())).thenReturn(catalog);
+        when(metricBindingMapper.selectOne(any())).thenReturn(null);
+        when(metricBindingMapper.insert(any(MetricBinding.class))).thenAnswer(invocation -> {
+            MetricBinding binding = invocation.getArgument(0);
+            return jdbcTemplate.update("INSERT INTO metric_binding (device_id, android_name, metric_code, app_package) VALUES (?, ?, ?, ?)",
+                    binding.getDeviceId(), binding.getAndroidName(), binding.getMetricCode(), binding.getAppPackage());
+        });
+        when(metricBindingMapper.selectList(any())).thenReturn(new ArrayList<MetricBinding>());
+
+        DeviceServiceImpl service = service(transactionManager);
+        BatchMetricBindingReq req = new BatchMetricBindingReq();
+        req.setTargetType("ANDROID_INSTANCE");
+        req.setTargets(Arrays.asList(target(1L, "android-1", item("CPU_USAGE_PERCENT", null), item("APP_PROCESS_STATE", null)),
+                target(2L, "android-2", item("APP_PROCESS_STATE", "com.example.second"))));
+
+        BatchMetricBindingResult result = service.saveMetricBindings(req);
+
+        assertEquals(1, result.getFailed().size());
+        assertEquals(1, result.getSucceeded().size());
+        assertEquals(Integer.valueOf(0), jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM metric_binding WHERE device_id = 1", Integer.class));
+        assertEquals(Integer.valueOf(1), jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM metric_binding WHERE device_id = 2", Integer.class));
+    }
+
+    private DeviceServiceImpl service(DataSourceTransactionManager transactionManager) {
+        return new DeviceServiceImpl(deviceMapper, deviceGroupMapper, opTaskMapper,
+                metricSnapshotMapper, alarmEventMapper, actionLogMapper, thresholdRuleMapper,
+                mytosClientFactory, objectMapper, metricBindingMapper, metricCatalogMapper,
+                metricTemplateMapper, metricTemplateItemMapper, transactionManager);
     }
 
     private BatchMetricBindingReq.Target target(Long deviceId, String androidName, MetricBindingReq.Item... items) {

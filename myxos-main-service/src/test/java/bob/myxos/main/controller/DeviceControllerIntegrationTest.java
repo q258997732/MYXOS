@@ -8,6 +8,7 @@ import bob.myxos.domain.entity.Device;
 import bob.myxos.common.enums.DeviceStatus;
 import bob.myxos.main.dto.DeviceCreateReq;
 import bob.myxos.main.dto.DeviceListResp;
+import bob.myxos.main.dto.BatchMetricBindingReq;
 import bob.myxos.main.service.DeviceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -174,6 +175,46 @@ class DeviceControllerIntegrationTest {
         mockMvc.perform(post("/api/devices/1/shell")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"c1\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = "ADMIN")
+    @DisplayName("批量指标绑定目标类型为空白时应返回 400")
+    void batchMetricBindingsWithBlankTargetTypeReturnsBadRequest() throws Exception {
+        BatchMetricBindingReq req = new BatchMetricBindingReq();
+        req.setTargetType(" ");
+        BatchMetricBindingReq.Target target = new BatchMetricBindingReq.Target();
+        target.setDeviceId(1L);
+        target.setAndroidName("android-1");
+        bob.myxos.main.dto.MetricBindingReq.Item item = new bob.myxos.main.dto.MetricBindingReq.Item();
+        item.setMetricCode("CPU_USAGE_PERCENT");
+        target.setItems(Collections.singletonList(item));
+        req.setTargets(Collections.singletonList(target));
+
+        mockMvc.perform(post("/api/devices/metric-bindings/batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = "ADMIN")
+    @DisplayName("批量指标绑定目标类型不受支持时应返回 400")
+    void batchMetricBindingsWithUnsupportedTargetTypeReturnsBadRequest() throws Exception {
+        BatchMetricBindingReq req = new BatchMetricBindingReq();
+        req.setTargetType("INVALID");
+        BatchMetricBindingReq.Target target = new BatchMetricBindingReq.Target();
+        target.setDeviceId(1L);
+        target.setAndroidName("android-1");
+        bob.myxos.main.dto.MetricBindingReq.Item item = new bob.myxos.main.dto.MetricBindingReq.Item();
+        item.setMetricCode("CPU_USAGE_PERCENT");
+        target.setItems(Collections.singletonList(item));
+        req.setTargets(Collections.singletonList(target));
+
+        mockMvc.perform(post("/api/devices/metric-bindings/batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isBadRequest());
     }
 }
