@@ -33,3 +33,6 @@ build/
 
 ### Local Environment ###
 .env
+
+### Local Worktrees ###
+.worktrees/
