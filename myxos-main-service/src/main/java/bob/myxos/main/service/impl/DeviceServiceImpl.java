@@ -575,7 +575,7 @@ public class DeviceServiceImpl implements DeviceService {
     @Transactional(readOnly = true)
     public List<MetricSnapshot> listLatestMetrics(Long id) {
         getDetail(id);
-        List<MetricSnapshot> snapshots = metricSnapshotMapper.selectLatestPerTypeByDevice(id);
+        List<MetricSnapshot> snapshots = metricSnapshotMapper.selectLatestPerMetricTargetByDevice(id);
         return snapshots == null ? Collections.emptyList() : snapshots;
     }
 

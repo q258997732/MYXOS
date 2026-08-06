@@ -5,6 +5,7 @@ import bob.myxos.common.enums.OperationCode;
 import bob.myxos.common.exception.BizException;
 import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.DeviceGroup;
+import bob.myxos.domain.entity.MetricSnapshot;
 import bob.myxos.domain.entity.OpTask;
 import bob.myxos.domain.mapper.ActionLogMapper;
 import bob.myxos.domain.mapper.AlarmEventMapper;
@@ -375,5 +376,20 @@ class DeviceServiceTest {
         // Act & Assert
         assertThrows(BizException.class, () -> deviceService.submitOpTask(99L, OperationCode.REBOOT_HOST.name(), (Map<String, Object>) null));
         verify(opTaskMapper, never()).insert(any(OpTask.class));
+    }
+
+    @Test
+    @DisplayName("实时指标应按指标编码、目标类型和安卓实例隔离查询")
+    void listLatestMetricsShouldKeepAndroidInstancesSeparate() {
+        Device existing = new Device();
+        existing.setId(1L);
+        existing.setDeleted(0);
+        when(deviceMapper.selectById(1L)).thenReturn(existing);
+        when(metricSnapshotMapper.selectLatestPerMetricTargetByDevice(1L))
+                .thenReturn(Collections.<MetricSnapshot>emptyList());
+
+        deviceService.listLatestMetrics(1L);
+
+        verify(metricSnapshotMapper).selectLatestPerMetricTargetByDevice(1L);
     }
 }

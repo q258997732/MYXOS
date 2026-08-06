@@ -94,6 +94,21 @@
               </el-card>
             </el-col>
           </el-row>
+
+          <h4 class="metric-section-title">安卓实例指标</h4>
+          <el-empty v-if="androidMetricGroups.length === 0" description="暂无安卓实例指标" />
+          <div v-for="group in androidMetricGroups" :key="group.name" class="android-metric-group">
+            <div class="android-metric-name">{{ group.name }}</div>
+            <el-row :gutter="16">
+              <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in group.metrics" :key="item.metricCode">
+                <el-card class="metric-card" shadow="hover" @click="openMetricHistory(item)">
+                  <div class="metric-title">{{ metricLabel(item.metricCode || item.metricType) }}</div>
+                  <div class="metric-value">{{ formatMetricValue(item) }}</div>
+                  <div class="metric-time">{{ formatDateTime(item.collectedAt) }}</div>
+                </el-card>
+              </el-col>
+            </el-row>
+          </div>
         </div>
       </el-tab-pane>
 
@@ -447,10 +462,22 @@ const hostMetrics = computed(() => {
   const HIDDEN_TYPES = ['ANDROID_STATUS', 'OFFLINE']
   const seen = new Set()
   return latestMetrics.filter(m => {
+    if (m.targetType === 'ANDROID_INSTANCE') return false
     if (HIDDEN_TYPES.includes(m.metricType) || seen.has(m.metricType)) return false
     seen.add(m.metricType)
     return true
   })
+})
+
+const androidMetricGroups = computed(() => {
+  const groups = {}
+  latestMetrics.filter(item => item.targetType === 'ANDROID_INSTANCE' && item.metricCode !== 'ANDROID_STATUS')
+    .forEach(item => {
+      const name = item.androidName || '未知实例'
+      if (!groups[name]) groups[name] = []
+      groups[name].push(item)
+    })
+  return Object.keys(groups).sort().map(name => ({ name, metrics: groups[name] }))
 })
 
 const selectedAndroidStatus = computed(() => (androids.find(item => item.name === bindingInstanceName.value) || {}).status || 'UNKNOWN')
