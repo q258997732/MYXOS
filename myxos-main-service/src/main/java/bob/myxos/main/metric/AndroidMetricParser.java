@@ -20,6 +20,11 @@ public final class AndroidMetricParser {
             "(?m)^\\s*(?:PERS\\s+#\\s*\\d+|Proc\\s+#\\s*\\d+):.*?\\s"
                     + "(?:[A-Z]/[A-Z]/)?(TOP|BTOP|FGS|BFGS|IMPF|IMPB|SVC|PER|CACHED)\\s+.*?\\s"
                     + "(\\d+):([A-Za-z0-9_.$]+)(?::[A-Za-z0-9_.$]+)?/u[0-9A-Za-z]+\\b");
+    private static final Pattern APP_PROCESS_BLOCK_PATTERN = Pattern.compile(
+            "(?ms)^\\s*\\*APP\\* UID\\s+\\S+\\s+ProcessRecord\\{[^}]*?\\b(\\d+):"
+                    + "([A-Za-z0-9_.$]+)(?::[A-Za-z0-9_.$]+)?/u[0-9A-Za-z]+\\}"
+                    + "(.*?)(?=^\\s*\\*APP\\* UID|\\z)");
+    private static final Pattern CUR_PROC_STATE_PATTERN = Pattern.compile("\\bcurProcState\\s*=\\s*(\\d+)");
 
     public Optional<Long> parseMemTotalKb(String output) {
         return parseLong(MEM_TOTAL_PATTERN, output);
@@ -95,7 +100,40 @@ public final class AndroidMetricParser {
                 best = candidate;
             }
         }
+        Matcher appBlockMatcher = APP_PROCESS_BLOCK_PATTERN.matcher(output);
+        while (appBlockMatcher.find()) {
+            if (!packageName.trim().equals(appBlockMatcher.group(2))) {
+                continue;
+            }
+            Matcher stateMatcher = CUR_PROC_STATE_PATTERN.matcher(appBlockMatcher.group(3));
+            if (!stateMatcher.find()) {
+                continue;
+            }
+            int procState = Integer.parseInt(stateMatcher.group(1));
+            String rawState = rawStateFromProcState(procState);
+            AppProcessState candidate = new AppProcessState(normalizeProcessState(rawState),
+                    Integer.valueOf(appBlockMatcher.group(1)), rawState);
+            if (stateRank(candidate.status) > stateRank(best.status)) {
+                best = candidate;
+            }
+        }
         return Optional.of(best);
+    }
+
+    private String rawStateFromProcState(int procState) {
+        switch (procState) {
+            case 2: return "TOP";
+            case 3: return "BTOP";
+            case 4: return "FGS";
+            case 5: return "BFGS";
+            case 6: return "IMPF";
+            case 7: return "IMPB";
+            case 0:
+            case 1: return "PER";
+            case 10:
+            case 11: return "SVC";
+            default: return "RUNNING";
+        }
     }
 
     private String normalizeProcessState(String rawState) {

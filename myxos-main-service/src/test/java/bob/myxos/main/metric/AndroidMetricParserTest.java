@@ -40,6 +40,22 @@ class AndroidMetricParserTest {
     }
 
     @Test
+    void 应从应用进程记录区块解析前台服务状态() {
+        String 输出 = "  *APP* UID 10095 ProcessRecord{3686b 788:com.kingsware.rpa/u0a95}\n"
+                + "    packageList={com.kingsware.rpa}\n"
+                + "    pid=788\n"
+                + "    curProcState=4\n"
+                + "    mHasForegroundServices=true\n";
+
+        AndroidMetricParser.AppProcessState 状态 = parser.parseAppProcessState(输出, "com.kingsware.rpa")
+                .orElseThrow(AssertionError::new);
+
+        assertEquals("ACTIVE", 状态.getStatus());
+        assertEquals(Integer.valueOf(788), 状态.getPid());
+        assertEquals("FGS", 状态.getRawState());
+    }
+
+    @Test
     void 应从完整top输出解析CPU使用率() {
         String 输出 = "Tasks: 99 total, 1 running, 98 sleeping, 0 stopped, 0 zombie\n"
                 + "800%cpu 36%user 20%nice 40%sys 736%idle 4%iow 0%irq 0%sirq 0%host\n";
