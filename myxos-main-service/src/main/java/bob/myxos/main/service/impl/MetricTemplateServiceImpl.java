@@ -10,6 +10,7 @@ import bob.myxos.domain.mapper.MetricCatalogMapper;
 import bob.myxos.domain.mapper.MetricTemplateItemMapper;
 import bob.myxos.domain.mapper.MetricTemplateMapper;
 import bob.myxos.main.dto.MetricTemplateReq;
+import bob.myxos.main.metric.MetricDefinitionRegistry;
 import bob.myxos.main.service.MetricTemplateService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
@@ -59,6 +60,9 @@ public class MetricTemplateServiceImpl implements MetricTemplateService {
         for (MetricTemplateReq.Item item : req.getItems()) {
             MetricCatalog catalog = metricCatalogMapper.selectById(item.getMetricCatalogId());
             if (catalog == null || Integer.valueOf(1).equals(catalog.getDeleted()) || !req.getTargetType().equals(catalog.getTargetType())) throw new BizException("模板指标与目标类型不兼容: " + item.getMetricCatalogId());
+            if (MetricDefinitionRegistry.APP_PROCESS_STATE.equals(catalog.getCode())) {
+                throw new BizException("应用进程状态指标必须在安卓实例上绑定具体应用包名");
+            }
             MetricTemplateItem entity = new MetricTemplateItem(); entity.setTemplateId(templateId); entity.setMetricCatalogId(item.getMetricCatalogId()); entity.setEnabled(item.getEnabled() == null ? 1 : item.getEnabled()); entity.setDefaultIntervalSec(item.getDefaultIntervalSec()); entity.setEnumOptions(item.getEnumOptions()); metricTemplateItemMapper.insert(entity);
         }
     }

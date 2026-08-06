@@ -47,6 +47,21 @@ class MetricTemplateServiceTest {
         assertThrows(BizException.class, () -> service().create(hostTemplateContaining(9L)));
     }
 
+    @Test
+    void 模板不应包含需要应用包名的进程状态指标() {
+        MetricCatalog catalog = new MetricCatalog();
+        catalog.setId(10L);
+        catalog.setCode("APP_PROCESS_STATE");
+        catalog.setTargetType("ANDROID_INSTANCE");
+        catalog.setDeleted(0);
+        when(metricCatalogMapper.selectById(10L)).thenReturn(catalog);
+
+        MetricTemplateReq req = hostTemplateContaining(10L);
+        req.setTargetType("ANDROID_INSTANCE");
+
+        assertThrows(BizException.class, () -> service().create(req));
+    }
+
     private MetricTemplateServiceImpl service() {
         return new MetricTemplateServiceImpl(metricCatalogMapper, metricTemplateMapper,
                 metricTemplateItemMapper, metricBindingMapper);
