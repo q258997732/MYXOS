@@ -1,7 +1,9 @@
 package bob.myxos.main.service;
 
 import bob.myxos.domain.entity.ThresholdAction;
+import bob.myxos.domain.entity.MetricCatalog;
 import bob.myxos.domain.entity.ThresholdRule;
+import bob.myxos.main.dto.ThresholdMetricOptionExecuteReq;
 import bob.myxos.main.dto.ThresholdRuleReq;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
@@ -66,6 +68,10 @@ public interface ThresholdService {
 
     /** 查询枚举指标可用于阈值的已验证选项。 */
     List<String> listEnumOptions(String metricCode);
+
+    List<MetricCatalog> listMetricCandidates(String scopeType, Long scopeId, List<Long> scopeIds);
+
+    List<String> executeEnumOptions(ThresholdMetricOptionExecuteReq req);
 
     /**
      * 删除规则及其动作（逻辑删除）

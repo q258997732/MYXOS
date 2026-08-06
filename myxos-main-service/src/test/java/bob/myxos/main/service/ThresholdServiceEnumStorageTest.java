@@ -4,6 +4,7 @@ import bob.myxos.common.exception.BizException;
 import bob.myxos.domain.entity.MetricCatalog;
 import bob.myxos.domain.entity.MetricTemplateItem;
 import bob.myxos.domain.mapper.MetricCatalogMapper;
+import bob.myxos.domain.mapper.MetricBindingMapper;
 import bob.myxos.domain.mapper.MetricTemplateItemMapper;
 import bob.myxos.domain.mapper.ThresholdActionMapper;
 import bob.myxos.domain.mapper.ThresholdRuleMapper;
@@ -27,7 +28,8 @@ class ThresholdServiceEnumStorageTest {
         MetricCatalogMapper catalogMapper = mock(MetricCatalogMapper.class);
         MetricTemplateItemMapper itemMapper = mock(MetricTemplateItemMapper.class);
         ThresholdService service = new ThresholdServiceImpl(mock(ThresholdRuleMapper.class),
-                mock(ThresholdActionMapper.class), catalogMapper, itemMapper);
+                mock(ThresholdActionMapper.class), catalogMapper, itemMapper, mock(MetricBindingMapper.class),
+                mock(bob.myxos.domain.mapper.DeviceMapper.class), mock(DeviceService.class));
         MetricCatalog catalog = new MetricCatalog();
         catalog.setId(9L);
         catalog.setCode("ANDROID_STATUS");

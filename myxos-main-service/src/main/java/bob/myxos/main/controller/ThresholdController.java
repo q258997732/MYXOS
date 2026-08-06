@@ -5,6 +5,8 @@ import bob.myxos.common.api.Result;
 import bob.myxos.domain.entity.ThresholdAction;
 import bob.myxos.domain.entity.ThresholdRule;
 import bob.myxos.main.dto.ThresholdRuleReq;
+import bob.myxos.main.dto.ThresholdMetricOptionExecuteReq;
+import bob.myxos.domain.entity.MetricCatalog;
 import bob.myxos.main.service.ThresholdService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -91,6 +93,19 @@ public class ThresholdController {
     @GetMapping("/metric-options")
     public Result<List<String>> metricOptions(@RequestParam String metricCode) {
         return Result.ok(thresholdService.listEnumOptions(metricCode));
+    }
+
+    @GetMapping("/metric-candidates")
+    public Result<List<MetricCatalog>> metricCandidates(@RequestParam String scopeType,
+                                                         @RequestParam(required = false) Long scopeId,
+                                                         @RequestParam(required = false) List<Long> scopeIds) {
+        return Result.ok(thresholdService.listMetricCandidates(scopeType, scopeId, scopeIds));
+    }
+
+    @PostMapping("/metric-options/execute")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public Result<List<String>> executeMetricOptions(@Valid @RequestBody ThresholdMetricOptionExecuteReq req) {
+        return Result.ok(thresholdService.executeEnumOptions(req));
     }
 
     /**

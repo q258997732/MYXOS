@@ -6,13 +6,20 @@ import bob.myxos.common.exception.BizException;
 import bob.myxos.domain.entity.ThresholdAction;
 import bob.myxos.domain.entity.ThresholdRule;
 import bob.myxos.domain.entity.MetricCatalog;
+import bob.myxos.domain.entity.MetricBinding;
+import bob.myxos.domain.entity.Device;
 import bob.myxos.domain.entity.MetricTemplateItem;
 import bob.myxos.domain.mapper.MetricCatalogMapper;
+import bob.myxos.domain.mapper.MetricBindingMapper;
+import bob.myxos.domain.mapper.DeviceMapper;
 import bob.myxos.domain.mapper.MetricTemplateItemMapper;
 import bob.myxos.domain.mapper.ThresholdActionMapper;
 import bob.myxos.domain.mapper.ThresholdRuleMapper;
 import bob.myxos.main.dto.ThresholdRuleReq;
+import bob.myxos.main.dto.ThresholdMetricOptionExecuteReq;
 import bob.myxos.main.metric.MetricDefinitionRegistry;
+import bob.myxos.main.metric.MetricDefinition;
+import bob.myxos.main.service.DeviceService;
 import bob.myxos.main.service.ThresholdService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -44,6 +51,9 @@ public class ThresholdServiceImpl implements ThresholdService {
     private final ThresholdActionMapper actionMapper;
     private final MetricCatalogMapper catalogMapper;
     private final MetricTemplateItemMapper templateItemMapper;
+    private final MetricBindingMapper bindingMapper;
+    private final DeviceMapper deviceMapper;
+    private final DeviceService deviceService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -193,6 +203,57 @@ public class ThresholdServiceImpl implements ThresholdService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<MetricCatalog> listMetricCandidates(String scopeType, Long scopeId, List<Long> scopeIds) {
+        Set<Long> deviceIds = resolveScopeDeviceIds(scopeType, scopeId, scopeIds);
+        if (deviceIds != null && deviceIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        LambdaQueryWrapper<MetricBinding> bindingQuery = new LambdaQueryWrapper<MetricBinding>()
+                .eq(MetricBinding::getDeleted, 0).eq(MetricBinding::getEnabled, 1);
+        if (deviceIds != null) {
+            bindingQuery.in(MetricBinding::getDeviceId, deviceIds);
+        }
+        List<MetricBinding> bindings = bindingMapper.selectList(bindingQuery);
+        if (bindings == null || bindings.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Set<String> codes = bindings.stream().map(MetricBinding::getMetricCode)
+                .filter(code -> code != null && !code.trim().isEmpty()).collect(Collectors.toSet());
+        if (codes.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return catalogMapper.selectList(new LambdaQueryWrapper<MetricCatalog>()
+                .in(MetricCatalog::getCode, codes).eq(MetricCatalog::getDeleted, 0)
+                .eq(MetricCatalog::getThresholdEnabled, 1).orderByAsc(MetricCatalog::getTargetType)
+                .orderByAsc(MetricCatalog::getCategory).orderByAsc(MetricCatalog::getCode));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> executeEnumOptions(ThresholdMetricOptionExecuteReq req) {
+        MetricCatalog catalog = requireCatalog(req.getMetricCode());
+        if (!"ENUM".equals(catalog.getValueType())) {
+            throw new BizException("该指标不是枚举类型");
+        }
+        MetricDefinition definition = MetricDefinitionRegistry.findByCode(catalog.getCode())
+                .orElseThrow(() -> new BizException("指标未在受控目录中定义"));
+        String command = MetricDefinitionRegistry.findReadOnlyAdbCommand(definition.getCommandKey())
+                .orElseThrow(() -> new BizException("指标命令未获授权"));
+        String androidName = req.getAndroidName().trim();
+        String appPackage = req.getAppPackage().trim();
+        MetricBinding binding = bindingMapper.selectOne(new LambdaQueryWrapper<MetricBinding>()
+                .eq(MetricBinding::getDeviceId, req.getDeviceId()).eq(MetricBinding::getMetricCode, catalog.getCode())
+                .eq(MetricBinding::getAndroidName, androidName).eq(MetricBinding::getAppPackage, appPackage)
+                .eq(MetricBinding::getEnabled, 1).eq(MetricBinding::getDeleted, 0));
+        if (binding == null) {
+            throw new BizException("指标未在指定设备、安卓实例和应用包名上启用");
+        }
+        deviceService.executeShell(req.getDeviceId(), androidName, command);
+        return listEnumOptions(catalog.getCode());
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         requireRule(id);
@@ -302,12 +363,6 @@ public class ThresholdServiceImpl implements ThresholdService {
             if (values.isEmpty()) {
                 throw new BizException("枚举指标必须选择至少一个选项");
             }
-            Set<String> available = new LinkedHashSet<>(MetricDefinitionRegistry.APP_PROCESS_STATE.equals(catalog.getCode())
-                    ? Arrays.asList("FOREGROUND", "ACTIVE", "RUNNING", "STOPPED")
-                    : collectEnumOptions(catalog.getId()));
-            if (!available.containsAll(values)) {
-                throw new BizException("枚举阈值包含未验证的选项");
-            }
             try {
                 String thresholdText = objectMapper.writeValueAsString(values);
                 req.setThresholdText(thresholdText);
@@ -415,8 +470,7 @@ public class ThresholdServiceImpl implements ThresholdService {
         if (req.getThresholdOptions() != null && !req.getThresholdOptions().trim().isEmpty()) {
             return parseOptions(req.getThresholdOptions());
         }
-        if ((req.getMetricCode() == null || req.getMetricCode().trim().isEmpty())
-                && req.getThresholdText() != null && !req.getThresholdText().trim().isEmpty()) {
+        if (req.getThresholdText() != null && !req.getThresholdText().trim().isEmpty()) {
             String text = req.getThresholdText().trim();
             if (text.startsWith("[")) {
                 return parseOptions(text);
@@ -424,6 +478,28 @@ public class ThresholdServiceImpl implements ThresholdService {
             return Collections.singletonList(text);
         }
         return Collections.emptyList();
+    }
+
+    private Set<Long> resolveScopeDeviceIds(String scopeType, Long scopeId, List<Long> scopeIds) {
+        if ("ALL".equals(scopeType)) {
+            return null;
+        }
+        if ("DEVICE".equals(scopeType)) {
+            Set<Long> ids = new LinkedHashSet<>();
+            if (scopeIds != null) {
+                for (Long id : scopeIds) if (id != null) ids.add(id);
+            }
+            if (ids.isEmpty() && scopeId != null) ids.add(scopeId);
+            return ids;
+        }
+        if ("GROUP".equals(scopeType)) {
+            if (scopeId == null) return Collections.emptySet();
+            List<Device> devices = deviceMapper.selectList(new LambdaQueryWrapper<Device>()
+                    .eq(Device::getGroupId, scopeId).eq(Device::getDeleted, 0));
+            if (devices == null) return Collections.emptySet();
+            return devices.stream().map(Device::getId).filter(id -> id != null).collect(Collectors.toSet());
+        }
+        throw new BizException("作用范围类型不合法");
     }
 
     /**
