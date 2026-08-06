@@ -46,6 +46,9 @@ npm run dev
 
 # 构建前端并作为前端验证
 npm run build
+
+# 运行前端测试
+npm test -- --run
 ```
 
 ## 数据库约定
@@ -60,6 +63,13 @@ npm run build
 - JWT 密钥通过 `MYXOS_JWT_SECRET` 环境变量注入。
 - 主服务与采集服务内部通信通过 `MYXOS_INTERNAL_TOKEN` 环境变量注入的共享令牌保护。
 - 数据库密码通过环境变量注入，禁止写入源码。
+- 周期性 ADB 采集只能使用 `MetricDefinitionRegistry` 中的受控只读命令，禁止将任意 Shell 命令写入模板、绑定或定时任务。
+
+## 指标与告警约定
+
+- 指标模板不支持 `APP_PROCESS_STATE`，该指标必须在安卓实例上绑定具体应用包名。
+- `APP_PROCESS_STATE` 使用 `dumpsys activity processes`，状态仅能归一为 `FOREGROUND`、`ACTIVE`、`RUNNING`、`STOPPED`；快照、历史查询和阈值判断必须按设备、安卓实例和应用包名隔离。
+- 指标异常恢复时，现有告警自动从 `FIRING` 更新为 `RESOLVED` 并记录 `resolvedAt`；未新增告警升级、恢复动作或外部通知。
 
 ## 提交规范
 

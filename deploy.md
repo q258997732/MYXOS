@@ -115,25 +115,7 @@ docker compose exec myxos-main-service sh
 
 ## 健康检查
 
-当前 `docker-compose.yml` 使用 `/index.html` 作为主服务简单探活。建议后续在 `myxos-main-service` 中引入 `spring-boot-starter-actuator`，然后将 healthcheck 替换为：
-
-```yaml
-healthcheck:
-  test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
-  interval: 30s
-  timeout: 5s
-  retries: 3
-  start_period: 60s
-```
-
-actuator 依赖：
-
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-actuator</artifactId>
-</dependency>
-```
+当前 `docker-compose.yml` 使用主服务的 `/index.html` 进行基础探活。该探活只验证 Web 服务可响应；设备连通性、安卓实例状态、受控指标采集和告警处理由采集服务按各自调度周期执行。
 
 ## 故障排查
 
