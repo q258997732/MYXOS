@@ -30,9 +30,6 @@ const routes = [
       { path: 'settings', name: 'Settings', component: () => import('@/views/SettingsView.vue') },
       { path: 'users', name: 'UserList', component: () => import('@/views/UserListView.vue') },
       { path: 'metric-catalogs', name: 'MetricCatalog', component: () => import('@/views/MetricCatalogView.vue'), meta: { admin: true } },
-      { path: 'metric-templates', name: 'MetricTemplateList', component: () => import('@/views/MetricTemplateListView.vue'), meta: { admin: true } },
-      { path: 'metric-templates/create', name: 'MetricTemplateCreate', component: () => import('@/views/MetricTemplateEditView.vue'), meta: { admin: true } },
-      { path: 'metric-templates/:id/edit', name: 'MetricTemplateEdit', component: () => import('@/views/MetricTemplateEditView.vue'), meta: { admin: true } }
     ]
   }
 ]

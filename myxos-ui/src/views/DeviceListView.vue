@@ -24,6 +24,7 @@
         <el-form-item>
           <el-button type="primary" :icon="Search" @click="search">查询</el-button>
           <el-button :icon="Refresh" @click="reset">重置</el-button>
+          <el-button :disabled="selectedIds.length === 0" @click="openMetricApplication(selectedDevices)">批量应用指标</el-button>
           <el-button type="success" :icon="Plus" @click="$router.push('/devices/create')">新增设备</el-button>
         </el-form-item>
       </el-form>
@@ -37,7 +38,7 @@
         shadow="hover"
       >
         <div class="device-card-header">
-          <div class="device-name">{{ device.name || device.ip }}</div>
+          <div class="device-name"><el-checkbox v-model="selectedIds" :label="device.id" />{{ device.name || device.ip }}</div>
           <DeviceStatusTag :status="device.status" />
         </div>
         <div class="device-meta">
@@ -62,6 +63,7 @@
           <el-button size="small" :icon="View" @click="goDetail(device.id)">详情</el-button>
           <el-button size="small" :icon="Edit" @click="$router.push(`/devices/${device.id}/edit`)">编辑</el-button>
           <el-button size="small" :icon="Bell" @click="openThreshold(device)">阈值</el-button>
+          <el-button size="small" @click="openMetricApplication([device])">指标应用</el-button>
           <el-button size="small" type="danger" plain :icon="Delete" @click="remove(device)">删除</el-button>
         </div>
       </el-card>
@@ -79,11 +81,12 @@
     </div>
 
     <DeviceThresholdDrawer v-model="drawerVisible" :device="selectedDevice" />
+    <MetricApplicationDrawer v-model="metricDrawerVisible" :devices="metricDevices" @saved="load" />
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { computed, reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -93,6 +96,7 @@ import {
 import { deviceApi, deviceGroupApi } from '@/api'
 import DeviceStatusTag from '@/components/DeviceStatusTag.vue'
 import DeviceThresholdDrawer from '@/components/DeviceThresholdDrawer.vue'
+import MetricApplicationDrawer from '@/components/MetricApplicationDrawer.vue'
 
 const router = useRouter()
 const loading = ref(false)
@@ -101,6 +105,10 @@ const groups = reactive([])
 const total = ref(0)
 const drawerVisible = ref(false)
 const selectedDevice = ref(null)
+const selectedIds = ref([])
+const metricDrawerVisible = ref(false)
+const metricDevices = ref([])
+const selectedDevices = computed(() => devices.filter(device => selectedIds.value.includes(device.id)))
 
 const query = reactive({
   groupId: '',
@@ -116,6 +124,7 @@ const load = async () => {
     const res = await deviceApi.list(query)
     devices.splice(0, devices.length, ...(res.data.records || []))
     total.value = res.data.total || 0
+    selectedIds.value = selectedIds.value.filter(id => devices.some(device => device.id === id))
   } finally {
     loading.value = false
   }
@@ -151,6 +160,11 @@ const openThreshold = (device) => {
 
 const goDetail = (id) => {
   router.push(`/devices/${id}`)
+}
+
+const openMetricApplication = (targetDevices) => {
+  metricDevices.value = targetDevices
+  metricDrawerVisible.value = true
 }
 
 const remove = async (device) => {

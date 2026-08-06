@@ -18,7 +18,8 @@
         <el-form-item label="触发条件" required>
           <div v-if="selectedValueType === 'ENUM'" class="condition-row">
             <el-select v-model="form.compareOp" style="width: 120px"><el-option label="属于" value="IN" /><el-option label="不属于" value="NOT_IN" /></el-select>
-            <el-select v-model="form.thresholdOptions" multiple placeholder="选择已验证枚举值" style="flex: 1; margin-left: 8px"><el-option v-for="option in enumOptions" :key="option" :label="option" :value="option" /></el-select>
+            <el-select v-model="form.thresholdOptions" multiple filterable allow-create default-first-option placeholder="选择或输入枚举值" style="flex: 1; margin-left: 8px"><el-option v-for="option in enumOptions" :key="option" :label="option" :value="option" /></el-select>
+            <el-button style="margin-left: 8px" @click="executeEnumOptions">执行并获取选项</el-button>
           </div>
           <div v-else-if="selectedValueType === 'STRING'" class="condition-row">
             <el-select v-model="form.compareOp" style="width: 120px"><el-option label="等于" value="EQ" /><el-option label="不等于" value="NE" /><el-option label="包含" value="CONTAINS" /></el-select>
@@ -182,7 +183,7 @@ import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, QuestionFilled } from '@element-plus/icons-vue'
-import { thresholdApi, deviceApi, deviceGroupApi, metricCatalogApi } from '@/api'
+import { thresholdApi, deviceApi, deviceGroupApi } from '@/api'
 import { toThresholdForm } from '@/utils/threshold-form'
 
 const route = useRoute()
@@ -322,15 +323,25 @@ const selectedCatalog = computed(() => metricCatalogs.value.find(item => item.co
 const selectedValueType = computed(() => (selectedCatalog.value || {}).valueType || 'NUMBER')
 
 const loadMetricCatalogs = async () => {
-  const [host, android] = await Promise.all([metricCatalogApi.list({ targetType: 'HOST' }), metricCatalogApi.list({ targetType: 'ANDROID_INSTANCE' })])
-  metricCatalogs.value = [...(host.data || []), ...(android.data || [])].filter(item => item.thresholdEnabled === 1)
+  const params = { scopeType: form.scopeType }
+  if (form.scopeType === 'GROUP') params.scopeId = form.scopeId
+  if (form.scopeType === 'DEVICE') params.scopeIds = form.scopeIds
+  if (form.scopeAndroidNames.length === 1) params.scopeAndroidName = form.scopeAndroidNames[0]
+  if (form.scopeAppPackage.trim()) params.scopeAppPackage = form.scopeAppPackage.trim()
+  const response = await thresholdApi.metricCandidates(params)
+  metricCatalogs.value = response.data || []
 }
 
 const loadEnumOptions = async () => {
-  enumOptions.value = []
-  if (selectedValueType.value !== 'ENUM') return
-  const res = await thresholdApi.metricOptions(form.metricCode)
-  enumOptions.value = res.data || []
+  if (selectedValueType.value !== 'ENUM') enumOptions.value = []
+}
+
+const executeEnumOptions = async () => {
+  if (selectedValueType.value !== 'ENUM' || form.scopeIds.length !== 1 || form.scopeAndroidNames.length !== 1 || !form.scopeAppPackage.trim()) {
+    return ElMessage.warning('请选择单个设备、单个安卓实例并填写应用包名')
+  }
+  const response = await thresholdApi.executeMetricOptions({ deviceId: form.scopeIds[0], androidName: form.scopeAndroidNames[0], metricCode: form.metricCode, appPackage: form.scopeAppPackage.trim() })
+  enumOptions.value = response.data || []
 }
 
 const onMetricChange = async () => {
@@ -366,6 +377,7 @@ const loadAndroidNames = async () => {
 
 // 作用范围变化时联动刷新实例名称候选
 watch([() => form.scopeType, () => form.scopeId, () => form.scopeIds.join(',')], loadAndroidNames)
+watch([() => form.scopeType, () => form.scopeId, () => form.scopeIds.join(','), () => form.scopeAndroidNames.join(','), () => form.scopeAppPackage], loadMetricCatalogs)
 
 // 指标类型切换时联动条件类型与默认比较操作
 watch(() => form.metricType, (type) => {

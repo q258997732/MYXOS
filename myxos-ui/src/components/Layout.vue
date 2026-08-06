@@ -41,14 +41,10 @@
           <el-icon><Setting /></el-icon>
           <span>系统配置</span>
         </el-menu-item>
-        <el-sub-menu v-if="userStore.isAdmin" index="/metric-templates">
-          <template #title>
-            <el-icon><Histogram /></el-icon>
-            <span>指标模板</span>
-          </template>
-          <el-menu-item index="/metric-catalogs">指标目录</el-menu-item>
-          <el-menu-item index="/metric-templates">模板管理</el-menu-item>
-        </el-sub-menu>
+        <el-menu-item v-if="userStore.isAdmin" index="/metric-catalogs">
+          <el-icon><Histogram /></el-icon>
+          <span>指标目录</span>
+        </el-menu-item>
         <el-menu-item v-if="userStore.isAdmin" index="/users">
           <el-icon><User /></el-icon>
           <span>用户管理</span>

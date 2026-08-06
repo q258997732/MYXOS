@@ -177,7 +177,7 @@
         </el-card>
       </el-tab-pane>
 
-      <el-tab-pane label="指标绑定" name="metric-bindings">
+      <el-tab-pane v-if="false" label="指标绑定" name="metric-bindings">
         <div class="binding-toolbar">
           <el-select v-model="hostTemplateId" placeholder="选择主机模板" clearable style="width: 260px">
             <el-option v-for="item in hostTemplates" :key="item.id" :label="item.name" :value="item.id" />
@@ -334,7 +334,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Cellphone, Picture, MapLocation, InfoFilled, CopyDocument } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
-import { deviceApi, authApi, metricBindingApi, metricTemplateApi } from '@/api'
+import { deviceApi, authApi, metricBindingApi } from '@/api'
 import { useUserStore } from '@/store'
 import DeviceStatusTag from '@/components/DeviceStatusTag.vue'
 import { formatDateTime } from '@/utils/date'
@@ -495,21 +495,16 @@ function bindingText(binding) {
 }
 
 async function loadBindingData() {
-  const [bindings, templates] = await Promise.all([metricBindingApi.listHost(deviceId), metricTemplateApi.list()])
+  const [bindings] = await Promise.all([metricBindingApi.listHost(deviceId)])
   hostBindings.splice(0, hostBindings.length, ...(bindings.data || []))
-  metricTemplates.splice(0, metricTemplates.length, ...(templates.data || []))
 }
 
 async function applyHostTemplate() {
-  await metricBindingApi.saveHost(deviceId, { templateIds: [hostTemplateId.value] })
-  await loadBindingData()
-  ElMessage.success('主机模板已应用')
+  ElMessage.warning('请通过设备列表应用指标')
 }
 
 async function applyAndroidTemplate() {
-  await metricBindingApi.saveAndroid(deviceId, bindingInstanceName.value, { templateIds: [androidTemplateId.value] })
-  await loadAndroidBindings()
-  ElMessage.success('安卓模板已应用')
+  ElMessage.warning('请通过设备列表应用指标')
 }
 
 async function loadAndroidBindings() {

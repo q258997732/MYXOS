@@ -42,7 +42,8 @@ export const thresholdApi = {
   update: (id, data) => request.put(`/thresholds/${id}`, data),
   delete: (id) => request.delete(`/thresholds/${id}`),
   toggle: (id, enabled) => request.post(`/thresholds/${id}/toggle`, { enabled }),
-  metricOptions: (metricCode) => request.get('/thresholds/metric-options', { params: { metricCode } })
+  metricCandidates: (params) => request.get('/thresholds/metric-candidates', { params }),
+  executeMetricOptions: (data) => request.post('/thresholds/metric-options/execute', data)
 }
 
 export const alarmApi = {
@@ -76,22 +77,16 @@ export const sysConfigApi = {
 }
 
 export const metricCatalogApi = {
-  list: (params) => request.get('/metric-catalogs', { params })
-}
-
-export const metricTemplateApi = {
-  list: () => request.get('/metric-templates'),
-  detail: (id) => request.get(`/metric-templates/${id}`),
-  create: (data) => request.post('/metric-templates', data),
-  update: (id, data) => request.put(`/metric-templates/${id}`, data),
-  delete: (id) => request.delete(`/metric-templates/${id}`)
+  list: (params) => request.get('/metric-catalogs', { params }),
+  update: (id, data) => request.put(`/metric-catalogs/${id}`, data)
 }
 
 export const metricBindingApi = {
   listHost: (deviceId) => request.get(`/devices/${deviceId}/metric-bindings`),
   saveHost: (deviceId, data) => request.put(`/devices/${deviceId}/metric-bindings`, data),
   listAndroid: (deviceId, androidName) => request.get(`/devices/${deviceId}/androids/${encodeURIComponent(androidName)}/metric-bindings`),
-  saveAndroid: (deviceId, androidName, data) => request.put(`/devices/${deviceId}/androids/${encodeURIComponent(androidName)}/metric-bindings`, data)
+  saveAndroid: (deviceId, androidName, data) => request.put(`/devices/${deviceId}/androids/${encodeURIComponent(androidName)}/metric-bindings`, data),
+  batch: (data) => request.post('/devices/metric-bindings/batch', data)
 }
 
 export const userApi = {
