@@ -163,6 +163,12 @@
       </el-tab-pane>
 
       <el-tab-pane label="指标绑定" name="metric-bindings">
+        <div class="binding-toolbar">
+          <el-select v-model="hostTemplateId" placeholder="选择主机模板" clearable style="width: 260px">
+            <el-option v-for="item in hostTemplates" :key="item.id" :label="item.name" :value="item.id" />
+          </el-select>
+          <el-button type="primary" :disabled="!hostTemplateId" @click="applyHostTemplate">应用模板</el-button>
+        </div>
         <h4 class="metric-section-title">主机直接绑定</h4>
         <el-table :data="hostBindings" size="small" stripe>
           <el-table-column prop="metricCode" label="指标" min-width="180" />
@@ -173,6 +179,10 @@
         <el-select v-model="bindingInstanceName" placeholder="选择安卓实例" filterable style="width: 280px" @change="loadAndroidBindings">
           <el-option v-for="item in androids" :key="item.name" :label="item.name" :value="item.name" />
         </el-select>
+        <el-select v-model="androidTemplateId" placeholder="选择安卓模板" clearable style="width: 260px; margin-left: 12px">
+          <el-option v-for="item in androidTemplates" :key="item.id" :label="item.name" :value="item.id" />
+        </el-select>
+        <el-button type="primary" :disabled="!bindingInstanceName || !androidTemplateId" style="margin-left: 12px" @click="applyAndroidTemplate">应用模板</el-button>
         <el-alert v-if="bindingInstanceName" :type="selectedAndroidStatus === 'RUNNING' ? 'success' : 'warning'" :closable="false" show-icon :title="collectionStatusLabel(selectedAndroidStatus)" style="margin: 12px 0" />
         <el-table v-if="bindingInstanceName" :data="instanceBindingRows" size="small" stripe>
           <el-table-column prop="metricCode" label="指标" min-width="170" />
@@ -306,7 +316,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Cellphone, Picture, MapLocation, InfoFilled, CopyDocument } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
-import { deviceApi, authApi, metricBindingApi } from '@/api'
+import { deviceApi, authApi, metricBindingApi, metricTemplateApi } from '@/api'
 import { useUserStore } from '@/store'
 import DeviceStatusTag from '@/components/DeviceStatusTag.vue'
 import { formatDateTime } from '@/utils/date'
@@ -327,6 +337,9 @@ const tasks = reactive([])
 const hostBindings = reactive([])
 const androidBindings = reactive([])
 const bindingInstanceName = ref('')
+const metricTemplates = reactive([])
+const hostTemplateId = ref(null)
+const androidTemplateId = ref(null)
 
 const androidLoading = ref(false)
 const metricsLoading = ref(false)
@@ -442,6 +455,8 @@ const hostMetrics = computed(() => {
 
 const selectedAndroidStatus = computed(() => (androids.find(item => item.name === bindingInstanceName.value) || {}).status || 'UNKNOWN')
 const instanceBindingRows = computed(() => buildInstanceBindingRows(hostBindings, androidBindings))
+const hostTemplates = computed(() => metricTemplates.filter(item => item.targetType === 'HOST'))
+const androidTemplates = computed(() => metricTemplates.filter(item => item.targetType === 'ANDROID_INSTANCE'))
 
 function bindingText(binding) {
   if (!binding) return '-'
@@ -449,8 +464,21 @@ function bindingText(binding) {
 }
 
 async function loadBindingData() {
-  const response = await metricBindingApi.listHost(deviceId)
-  hostBindings.splice(0, hostBindings.length, ...(response.data || []))
+  const [bindings, templates] = await Promise.all([metricBindingApi.listHost(deviceId), metricTemplateApi.list()])
+  hostBindings.splice(0, hostBindings.length, ...(bindings.data || []))
+  metricTemplates.splice(0, metricTemplates.length, ...(templates.data || []))
+}
+
+async function applyHostTemplate() {
+  await metricBindingApi.saveHost(deviceId, { templateIds: [hostTemplateId.value] })
+  await loadBindingData()
+  ElMessage.success('主机模板已应用')
+}
+
+async function applyAndroidTemplate() {
+  await metricBindingApi.saveAndroid(deviceId, bindingInstanceName.value, { templateIds: [androidTemplateId.value] })
+  await loadAndroidBindings()
+  ElMessage.success('安卓模板已应用')
 }
 
 async function loadAndroidBindings() {
