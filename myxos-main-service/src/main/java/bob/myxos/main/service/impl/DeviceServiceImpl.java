@@ -54,6 +54,9 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -83,13 +86,25 @@ public class DeviceServiceImpl implements DeviceService {
     private final MetricCatalogMapper metricCatalogMapper;
     private final MetricTemplateMapper metricTemplateMapper;
     private final MetricTemplateItemMapper metricTemplateItemMapper;
+    private final TransactionTemplate batchBindingTransactionTemplate;
 
     public DeviceServiceImpl(DeviceMapper deviceMapper, DeviceGroupMapper deviceGroupMapper, OpTaskMapper opTaskMapper,
                              MetricSnapshotMapper metricSnapshotMapper, AlarmEventMapper alarmEventMapper,
                              ActionLogMapper actionLogMapper, ThresholdRuleMapper thresholdRuleMapper,
                              MytosClientFactory clientFactory, ObjectMapper objectMapper) {
         this(deviceMapper, deviceGroupMapper, opTaskMapper, metricSnapshotMapper, alarmEventMapper,
-                actionLogMapper, thresholdRuleMapper, clientFactory, objectMapper, null, null, null, null);
+                actionLogMapper, thresholdRuleMapper, clientFactory, objectMapper, null, null, null, null, null);
+    }
+
+    public DeviceServiceImpl(DeviceMapper deviceMapper, DeviceGroupMapper deviceGroupMapper, OpTaskMapper opTaskMapper,
+                             MetricSnapshotMapper metricSnapshotMapper, AlarmEventMapper alarmEventMapper,
+                             ActionLogMapper actionLogMapper, ThresholdRuleMapper thresholdRuleMapper,
+                             MytosClientFactory clientFactory, ObjectMapper objectMapper,
+                             MetricBindingMapper metricBindingMapper, MetricCatalogMapper metricCatalogMapper,
+                             MetricTemplateMapper metricTemplateMapper, MetricTemplateItemMapper metricTemplateItemMapper) {
+        this(deviceMapper, deviceGroupMapper, opTaskMapper, metricSnapshotMapper, alarmEventMapper,
+                actionLogMapper, thresholdRuleMapper, clientFactory, objectMapper, metricBindingMapper,
+                metricCatalogMapper, metricTemplateMapper, metricTemplateItemMapper, null);
     }
 
     @Autowired
@@ -98,7 +113,8 @@ public class DeviceServiceImpl implements DeviceService {
                              ActionLogMapper actionLogMapper, ThresholdRuleMapper thresholdRuleMapper,
                              MytosClientFactory clientFactory, ObjectMapper objectMapper,
                              MetricBindingMapper metricBindingMapper, MetricCatalogMapper metricCatalogMapper,
-                             MetricTemplateMapper metricTemplateMapper, MetricTemplateItemMapper metricTemplateItemMapper) {
+                             MetricTemplateMapper metricTemplateMapper, MetricTemplateItemMapper metricTemplateItemMapper,
+                             PlatformTransactionManager transactionManager) {
         this.deviceMapper = deviceMapper;
         this.deviceGroupMapper = deviceGroupMapper;
         this.opTaskMapper = opTaskMapper;
@@ -112,6 +128,10 @@ public class DeviceServiceImpl implements DeviceService {
         this.metricCatalogMapper = metricCatalogMapper;
         this.metricTemplateMapper = metricTemplateMapper;
         this.metricTemplateItemMapper = metricTemplateItemMapper;
+        this.batchBindingTransactionTemplate = transactionManager == null ? null : new TransactionTemplate(transactionManager);
+        if (this.batchBindingTransactionTemplate != null) {
+            this.batchBindingTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        }
     }
 
     @Override
@@ -762,15 +782,7 @@ public class DeviceServiceImpl implements DeviceService {
             targetResult.setDeviceId(target.getDeviceId());
             targetResult.setAndroidName(target.getAndroidName() == null ? "" : target.getAndroidName());
             try {
-                if (!req.getTargetType().equals("HOST") && !req.getTargetType().equals("ANDROID_INSTANCE")) {
-                    throw new BizException("指标目标类型不合法");
-                }
-                boolean android = "ANDROID_INSTANCE".equals(req.getTargetType());
-                String androidName = target.getAndroidName() == null ? "" : target.getAndroidName();
-                if (android != !androidName.isEmpty()) throw new BizException("批量目标与指标类型不匹配");
-                MetricBindingReq single = new MetricBindingReq();
-                single.setItems(req.getItems());
-                saveMetricBindings(target.getDeviceId(), androidName, single);
+                executeBatchTarget(req.getTargetType(), target);
                 result.getSucceeded().add(targetResult);
             } catch (RuntimeException ex) {
                 targetResult.setReason(ex.getMessage());
@@ -778,6 +790,26 @@ public class DeviceServiceImpl implements DeviceService {
             }
         }
         return result;
+    }
+
+    private void executeBatchTarget(String targetType, BatchMetricBindingReq.Target target) {
+        if (batchBindingTransactionTemplate == null) {
+            throw new IllegalStateException("批量指标绑定事务未初始化");
+        }
+        batchBindingTransactionTemplate.execute(status -> {
+            if (!"HOST".equals(targetType) && !"ANDROID_INSTANCE".equals(targetType)) {
+                throw new BizException("指标目标类型不合法");
+            }
+            boolean android = "ANDROID_INSTANCE".equals(targetType);
+            String androidName = target.getAndroidName() == null ? "" : target.getAndroidName();
+            if (android != !androidName.isEmpty()) {
+                throw new BizException("批量目标与指标类型不匹配");
+            }
+            MetricBindingReq single = new MetricBindingReq();
+            single.setItems(target.getItems());
+            saveMetricBindings(target.getDeviceId(), androidName, single);
+            return null;
+        });
     }
 
     private void applyTemplate(Long deviceId, String androidName, String targetType, Long templateId) {

@@ -14,14 +14,14 @@ public class BatchMetricBindingReq {
     @Valid
     @NotEmpty
     private List<Target> targets;
-    @Valid
-    @NotEmpty
-    private List<MetricBindingReq.Item> items;
 
     @Data
     public static class Target {
         @NotNull
         private Long deviceId;
         private String androidName;
+        @Valid
+        @NotEmpty
+        private List<MetricBindingReq.Item> items;
     }
 }
